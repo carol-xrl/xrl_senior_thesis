@@ -1,0 +1,32 @@
+# CPJUMP1 Benchmark Configuration
+# All values previously hardcoded in notebooks 0-1.3
+
+experiment:
+  batch: "2020_11_04_CPJUMP1"
+  density: 100
+  antibiotics: "absent"
+  exclude_cas9_compound: true
+
+evaluation:
+  batch_size: 100000
+  null_size: 100000
+  q_threshold: 0.05
+  random_seed: 42
+
+paths:
+  profiles_dir: "profiles"
+  profile_suffix: "normalized_feature_select_negcon_batch.csv.gz"
+  experiment_metadata: "benchmark/output/experiment-metadata.tsv"
+  compound_annotations: "benchmark/input/JUMP-Target-1_compound_metadata_additional_annotations.tsv"
+
+# Time mapping: modality -> {hours: label}
+time_labels:
+  compound:
+    24: "short"
+    48: "long"
+  crispr:
+    96: "short"
+    144: "long"
+  orf:
+    48: "short"
+    96: "long"
