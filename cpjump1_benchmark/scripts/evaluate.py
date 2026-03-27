@@ -1,10 +1,11 @@
 """
 CPJUMP1 Benchmark Evaluation Script
 
-Clean reimplementation of notebooks 1.0, 1.1, 1.2, 1.3.
+Evaluates well-level features on replicability, matching, and cross-modality tasks.
+Accepts any encoder's output in unified parquet format.
+
 Usage:
-    cd <project_root>
-    python -m cpjump1_benchmark.scripts.evaluate [--config configs/default.yaml]
+    python scripts/evaluate.py --features features/cellprofiler.parquet --root .
 """
 
 import argparse
@@ -13,12 +14,14 @@ import sys
 import numpy as np
 import pandas as pd
 
-# Add parent dir to path so cpjump1 package is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from cpjump1.config import load_config
 from cpjump1.data.loader import (
     load_experiment_metadata,
+    load_well_metadata,
+    load_features,
+    merge_features_and_metadata,
     load_profiles,
     load_compound_annotations,
 )
@@ -34,6 +37,7 @@ from cpjump1.evaluation.tasks import (
 
 def main():
     parser = argparse.ArgumentParser(description="CPJUMP1 Benchmark Evaluation")
+    parser.add_argument("--features", required=True, help="Path to unified features parquet")
     parser.add_argument("--config", default=None, help="Path to config YAML")
     parser.add_argument("--root", default=".", help="Project root directory")
     parser.add_argument("--output", default="cpjump1_benchmark/output", help="Output directory")
@@ -47,21 +51,23 @@ def main():
     # Set random seed for reproducibility
     np.random.seed(config.random_seed)
 
-    # Load experiment metadata and compound annotations
+    # Load data
     experiment_df = load_experiment_metadata(config, root)
     compound_annotations = load_compound_annotations(config, root)
+    well_metadata = load_well_metadata(root)
+    features = load_features(args.features)
+
+    # Merge features with metadata
+    merged = merge_features_and_metadata(features, well_metadata)
+    print(f"Loaded {len(merged)} wells, {len([c for c in merged.columns if c.startswith('feature_')])} features")
 
     # Result accumulators
-    rep_rows = []       # replicability fraction retrieved
-    match_rows = []     # matching fraction retrieved
-    cross_rows = []     # cross-modality fraction retrieved
-    rep_maps = []       # replicability mAP per perturbation
-    match_maps = []     # matching mAP per target
-    cross_maps = []     # cross-modality mAP per target
+    rep_rows, match_rows, cross_rows = [], [], []
+    rep_maps, match_maps, cross_maps = [], [], []
 
-    # Cache: store consensus profiles to avoid recomputation
-    consensus_cache = {}  # key: (modality, cell, time_label)
-    rep_cache = {}        # key: (modality, cell, time_label)
+    # Cache consensus profiles
+    consensus_cache = {}
+    rep_cache = {}
 
     cells = experiment_df.Cell_type.unique().tolist()
 
@@ -75,9 +81,8 @@ def main():
                 hours = config.hours_for(modality, time_label)
                 desc = f"{modality}_{cell}_{time_label}"
 
-                # Load profiles
                 profiles = load_profiles(
-                    experiment_df, config, cell, modality, time_label, root
+                    merged, experiment_df, config, cell, modality, time_label
                 )
                 if profiles.empty:
                     print(f"  Skipping {desc}: no data")
@@ -89,14 +94,10 @@ def main():
                 rep_cache[key] = rep_result
 
                 rep_rows.append({
-                    "Description": desc,
-                    "Modality": modality,
-                    "Cell": cell,
-                    "time": time_label,
-                    "timepoint": hours,
-                    "fr": round(rep_result.fraction_retrieved, 3),
+                    "Description": desc, "Modality": modality,
+                    "Cell": cell, "time": time_label,
+                    "timepoint": hours, "fr": round(rep_result.fraction_retrieved, 3),
                 })
-
                 mAP_df = rep_result.mAP_df.copy()
                 mAP_df["Description"] = desc
                 mAP_df["Modality"] = modality
@@ -111,7 +112,6 @@ def main():
 
                 # --- Within-modality matching ---
                 if modality == "compound":
-                    # Add target annotations (multi-label)
                     consensus_with_targets = add_compound_targets(
                         consensus_df, compound_annotations
                     )
@@ -123,12 +123,9 @@ def main():
                         anti_match=True, multilabel=True,
                     )
                     match_rows.append({
-                        "Description": desc,
-                        "Modality": modality,
-                        "Cell": cell,
-                        "time": time_label,
-                        "timepoint": hours,
-                        "fr": round(match_result.fraction_retrieved, 3),
+                        "Description": desc, "Modality": modality,
+                        "Cell": cell, "time": time_label,
+                        "timepoint": hours, "fr": round(match_result.fraction_retrieved, 3),
                     })
                     m_df = match_result.mAP_df.copy()
                     m_df["Description"] = desc
@@ -139,7 +136,6 @@ def main():
                     match_maps.append(m_df)
 
                 elif modality == "crispr":
-                    # Filter sister guides for matching
                     consensus_for_matching = filter_sister_guides(consensus_df)
                     if len(consensus_for_matching) > 0:
                         print(f"Computing {desc} matching")
@@ -148,12 +144,9 @@ def main():
                             anti_match=False, multilabel=False,
                         )
                         match_rows.append({
-                            "Description": desc,
-                            "Modality": modality,
-                            "Cell": cell,
-                            "time": time_label,
-                            "timepoint": hours,
-                            "fr": round(match_result.fraction_retrieved, 3),
+                            "Description": desc, "Modality": modality,
+                            "Cell": cell, "time": time_label,
+                            "timepoint": hours, "fr": round(match_result.fraction_retrieved, 3),
                         })
                         m_df = match_result.mAP_df.copy()
                         m_df["Description"] = desc
@@ -163,10 +156,8 @@ def main():
                         m_df["timepoint"] = hours
                         match_maps.append(m_df)
 
-                # orf: no within-modality matching (no sister reagents)
-
     # =========================================================
-    # 2. Cross-Modality Matching: compound × {crispr, orf}
+    # 2. Cross-Modality Matching
     # =========================================================
     for cell in cells:
         for comp_time in ["short", "long"]:
@@ -190,13 +181,11 @@ def main():
                     cross_result = evaluate_cross_modality(
                         comp_consensus, gene_consensus, config
                     )
-
                     cross_rows.append({
                         "Description": desc,
                         "Modality1": f"compound_{comp_time}",
                         "Modality2": f"{gene_mod}_{gene_time}",
-                        "Cell": cell,
-                        "fr": round(cross_result.fraction_retrieved, 3),
+                        "Cell": cell, "fr": round(cross_result.fraction_retrieved, 3),
                     })
                     c_df = cross_result.mAP_df.copy()
                     c_df["Description"] = desc
@@ -206,7 +195,7 @@ def main():
                     cross_maps.append(c_df)
 
     # =========================================================
-    # 3. ORF Replicability Variants (notebooks 1.1, 1.2)
+    # 3. ORF Replicability Variants
     # =========================================================
     orf_same_rows, orf_same_maps = [], []
     orf_diff_rows, orf_diff_maps = [], []
@@ -217,24 +206,20 @@ def main():
             desc = f"orf_{cell}_{time_label}"
 
             profiles = load_profiles(
-                experiment_df, config, cell, "orf", time_label, root
+                merged, experiment_df, config, cell, "orf", time_label
             )
             if profiles.empty:
                 continue
 
-            # Same-well replicability (notebook 1.1)
             print(f"Computing {desc} replicability (same-well)")
             same_result = evaluate_replicability(
                 profiles, config,
                 pos_sameby=["Metadata_broad_sample", "Metadata_Well"],
             )
             orf_same_rows.append({
-                "Description": desc,
-                "Modality": "orf",
-                "Cell": cell,
-                "time": time_label,
-                "timepoint": hours,
-                "fr": round(same_result.fraction_retrieved, 3),
+                "Description": desc, "Modality": "orf",
+                "Cell": cell, "time": time_label,
+                "timepoint": hours, "fr": round(same_result.fraction_retrieved, 3),
             })
             s_df = same_result.mAP_df.copy()
             s_df["Description"] = desc
@@ -244,7 +229,6 @@ def main():
             s_df["timepoint"] = hours
             orf_same_maps.append(s_df)
 
-            # Different-well replicability (notebook 1.2)
             print(f"Computing {desc} replicability (diff-well)")
             diff_result = evaluate_replicability(
                 profiles, config,
@@ -252,12 +236,9 @@ def main():
                 pos_diffby=["Metadata_Well"],
             )
             orf_diff_rows.append({
-                "Description": desc,
-                "Modality": "orf",
-                "Cell": cell,
-                "time": time_label,
-                "timepoint": hours,
-                "fr": round(diff_result.fraction_retrieved, 3),
+                "Description": desc, "Modality": "orf",
+                "Cell": cell, "time": time_label,
+                "timepoint": hours, "fr": round(diff_result.fraction_retrieved, 3),
             })
             d_df = diff_result.mAP_df.copy()
             d_df["Description"] = desc
@@ -281,20 +262,15 @@ def main():
             )
 
     save(rep_maps, rep_rows,
-         "cellprofiler_replicability_map.csv",
-         "cellprofiler_replicability_fr.csv")
+         "cellprofiler_replicability_map.csv", "cellprofiler_replicability_fr.csv")
     save(match_maps, match_rows,
-         "cellprofiler_matching_map.csv",
-         "cellprofiler_matching_fr.csv")
+         "cellprofiler_matching_map.csv", "cellprofiler_matching_fr.csv")
     save(cross_maps, cross_rows,
-         "cellprofiler_gene_compound_matching_map.csv",
-         "cellprofiler_gene_compound_matching_fr.csv")
+         "cellprofiler_gene_compound_matching_map.csv", "cellprofiler_gene_compound_matching_fr.csv")
     save(orf_same_maps, orf_same_rows,
-         "cellprofiler_replicability_orf_same_map.csv",
-         "cellprofiler_replicability_orf_same_fr.csv")
+         "cellprofiler_replicability_orf_same_map.csv", "cellprofiler_replicability_orf_same_fr.csv")
     save(orf_diff_maps, orf_diff_rows,
-         "cellprofiler_replicability_orf_different_map.csv",
-         "cellprofiler_replicability_orf_different_fr.csv")
+         "cellprofiler_replicability_orf_different_map.csv", "cellprofiler_replicability_orf_different_fr.csv")
 
     print(f"\nResults saved to {output_dir}/")
 
@@ -302,11 +278,9 @@ def main():
     print("\n=== Replicability FR ===")
     for r in rep_rows:
         print(f"  {r['Description']:30s} {r['fr']:.3f}")
-
     print("\n=== Matching FR ===")
     for r in match_rows:
         print(f"  {r['Description']:30s} {r['fr']:.3f}")
-
     print("\n=== Cross-Modality FR ===")
     for r in cross_rows:
         print(f"  {r['Description']:45s} {r['fr']:.3f}")

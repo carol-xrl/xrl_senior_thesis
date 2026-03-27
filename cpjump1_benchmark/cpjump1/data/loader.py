@@ -1,4 +1,4 @@
-"""Load experiment metadata and profile data."""
+"""Load experiment metadata, well metadata, and feature data."""
 
 import os
 import glob
@@ -23,66 +23,77 @@ def load_experiment_metadata(config: Config, root: str = ".") -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
-def load_plates(
-    batch: str,
-    plates: list,
-    suffix: str,
-    profiles_dir: str,
-    root: str = ".",
-    extra_columns: dict = None,
+def load_well_metadata(root: str = ".") -> pd.DataFrame:
+    """Load well-level metadata (shared across all encoders)."""
+    path = os.path.join(root, "cpjump1_benchmark", "well_metadata.parquet")
+    return pd.read_parquet(path)
+
+
+def load_features(features_path: str) -> pd.DataFrame:
+    """Load a unified feature file (parquet).
+
+    Returns DataFrame with Metadata_Plate, Metadata_Well, feature_0, feature_1, ...
+    """
+    return pd.read_parquet(features_path)
+
+
+def merge_features_and_metadata(
+    features_df: pd.DataFrame,
+    well_metadata_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Load and concatenate profiles for a list of plates."""
-    dfs = []
-    for plate in plates:
-        pattern = os.path.join(root, profiles_dir, batch, plate, f"*_{suffix}")
-        files = glob.glob(pattern)
-        for f in files:
-            df = pd.read_csv(f, low_memory=False)
-            if extra_columns:
-                for col, val in extra_columns.items():
-                    df[col] = val
-            dfs.append(df)
-    return pd.concat(dfs, ignore_index=True, join="inner") if dfs else pd.DataFrame()
+    """Merge feature vectors with well-level metadata.
+
+    Features file has: Metadata_Plate, Metadata_Well, feature_*
+    Well metadata has: Metadata_Plate, Metadata_Well, Metadata_broad_sample, ...
+    """
+    return features_df.merge(
+        well_metadata_df, on=["Metadata_Plate", "Metadata_Well"], how="left"
+    )
 
 
 def load_profiles(
+    merged_df: pd.DataFrame,
     experiment_df: pd.DataFrame,
     config: Config,
     cell: str,
     modality: str,
     time_label: str,
-    root: str = ".",
 ) -> pd.DataFrame:
-    """Load all profiles for a (cell, modality, time_label) combination.
+    """Filter merged profiles for a (cell, modality, time_label) combination.
 
-    Returns a DataFrame with well-level profiles, empty wells filled,
-    and Metadata_negcon / Metadata_modality columns added.
+    Args:
+        merged_df: DataFrame with features + metadata (from merge_features_and_metadata).
+        experiment_df: Filtered experiment metadata.
+        config: Config object.
+        cell: Cell type ("A549" / "U2OS").
+        modality: Perturbation type ("compound" / "crispr" / "orf").
+        time_label: Time label ("short" / "long").
+
+    Returns:
+        DataFrame ready for evaluation, with Metadata_negcon and Metadata_modality added.
     """
     hours = config.hours_for(modality, time_label)
 
+    # Get plates for this (cell, modality, time) combination
     plates_df = experiment_df.query(
         "Cell_type == @cell and Perturbation == @modality and Time == @hours"
     )
     plates = plates_df.Assay_Plate_Barcode.unique().tolist()
 
-    extra = {"Metadata_modality": modality}
-    if modality in ("crispr", "orf"):
-        extra["Metadata_matching_target"] = None  # placeholder, filled below
-
-    df = load_plates(
-        config.batch, plates, config.profile_suffix, config.profiles_dir, root, extra
-    )
+    # Filter to these plates
+    df = merged_df[merged_df.Metadata_Plate.isin(plates)].copy()
 
     if df.empty:
         return df
+
+    # Add modality column
+    df["Metadata_modality"] = modality
 
     # For gene modalities, set matching_target from gene column
     if modality in ("crispr", "orf"):
         df["Metadata_matching_target"] = df["Metadata_gene"]
 
     # Fill DMSO wells — only for compounds (original notebook behavior)
-    # Gene modalities (crispr/orf) do NOT get this fill;
-    # their NaN broad_sample rows are simply dropped as empty wells.
     if modality == "compound":
         df["Metadata_broad_sample"] = df["Metadata_broad_sample"].fillna("DMSO")
 

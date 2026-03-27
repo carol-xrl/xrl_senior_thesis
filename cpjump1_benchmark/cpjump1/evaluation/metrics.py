@@ -18,6 +18,22 @@ import copairs.compute_np as backend
 from copairs.matching import dict_to_dframe
 
 
+def _compute_null_dists_deterministic(rel_k_list, null_size, seed=42):
+    """Deterministic replacement for backend.compute_null_dists.
+
+    The original uses multiprocessing.Pool which spawns child processes
+    with independent random states, making results non-reproducible.
+    This version runs single-process with a fixed seed.
+    """
+    null_confs = []
+    num_pos_list = rel_k_list.apply(np.sum)
+    num_neg_list = rel_k_list.apply(np.size) - num_pos_list
+    for num_pos, num_neg in zip(num_pos_list, num_neg_list):
+        null_confs.append((null_size, num_pos, num_neg))
+    null_dists = np.stack([backend.random_ap(*key, seed=seed) for key in null_confs])
+    return null_dists
+
+
 def compute_similarities(pairs, feats, batch_size, anti_match=False):
     dist_df = pairs[["ix1", "ix2"]].drop_duplicates().copy()
     dist_df["dist"] = cosine_indexed(feats, dist_df.values, batch_size)
@@ -65,7 +81,7 @@ def run_pipeline(
 
     ap_scores = rel_k_list.apply(backend.compute_ap)
     ap_scores = np.concatenate(ap_scores.values)
-    null_dists = backend.compute_null_dists(rel_k_list, null_size)
+    null_dists = _compute_null_dists_deterministic(rel_k_list, null_size)
     p_values = backend.compute_p_values(null_dists, ap_scores, null_size)
 
     result = results_to_dframe(
