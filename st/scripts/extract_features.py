@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -18,6 +19,37 @@ sys.path.insert(0, str(ST_DIR / "src"))
 from st_benchmark.encoders import build_encoder
 from st_benchmark.imaging import discover_sites, find_plate_image_dir, load_site, normalize_channels, resize_chw
 from st_benchmark.metadata import build_subset_metadata, load_config, selected_plates
+
+
+def wait_for_existing_run(output: Path, timeout_seconds: int) -> bool:
+    """Return True when an existing completed output can be reused."""
+    done_path = output.with_suffix(output.suffix + ".done")
+    lock_path = output.with_suffix(output.suffix + ".lock")
+    if done_path.exists() and output.exists():
+        print(f"output already complete: {output}", flush=True)
+        return True
+
+    start = time.time()
+    while lock_path.exists():
+        if done_path.exists() and output.exists():
+            print(f"output completed by another process: {output}", flush=True)
+            return True
+        if time.time() - start > timeout_seconds:
+            raise TimeoutError(f"Timed out waiting for lock: {lock_path}")
+        print(f"waiting for existing extraction lock: {lock_path}", flush=True)
+        time.sleep(30)
+    return False
+
+
+def create_lock(output: Path) -> Path:
+    """Create an extraction lock file for an output path."""
+    lock_path = output.with_suffix(output.suffix + ".lock")
+    try:
+        with lock_path.open("x", encoding="utf-8") as handle:
+            handle.write(f"pid={__import__('os').getpid()}\n")
+    except FileExistsError:
+        raise RuntimeError(f"Output lock already exists: {lock_path}") from None
+    return lock_path
 
 
 def parse_wells(values: list[str] | None) -> set[str] | None:
@@ -107,7 +139,14 @@ def main() -> None:
     parser.add_argument("--plates", nargs="*", default=None)
     parser.add_argument("--wells", nargs="*", default=None)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--lock-timeout-seconds", type=int, default=86400)
+    parser.add_argument("--force", action="store_true", help="Overwrite output even if a .done marker exists")
     args = parser.parse_args()
+
+    output = Path(args.output)
+    if not args.force and wait_for_existing_run(output, args.lock_timeout_seconds):
+        return
+    lock_path = create_lock(output)
 
     repo_root = Path(args.repo_root)
     config = load_config(args.config)
@@ -117,34 +156,37 @@ def main() -> None:
     wells_filter = parse_wells(args.wells)
     allowed_wells = metadata_wells_by_plate(metadata, wells_filter)
 
-    encoder = build_encoder(args.encoder, device=args.device, model_name=args.model_name)
-    print(f"encoder={args.encoder} model={getattr(encoder, 'name', args.encoder)} dim={encoder.feature_dim}")
+    try:
+        encoder = build_encoder(args.encoder, device=args.device, model_name=args.model_name)
+        print(f"encoder={args.encoder} model={getattr(encoder, 'name', args.encoder)} dim={encoder.feature_dim}", flush=True)
 
-    all_frames = []
-    for plate in plates:
-        plate_meta = metadata[metadata["Metadata_Plate"] == plate]
-        if plate_meta.empty:
-            continue
-        batch = str(plate_meta["Metadata_Batch"].iloc[0])
-        frame = extract_plate(
-            encoder=encoder,
-            plate=str(plate),
-            batch=batch,
-            image_root=Path(args.image_root),
-            wells=allowed_wells[str(plate)],
-            batch_size=args.batch_size,
-        )
-        if not frame.empty:
-            all_frames.append(frame)
+        all_frames = []
+        for plate in plates:
+            plate_meta = metadata[metadata["Metadata_Plate"] == plate]
+            if plate_meta.empty:
+                continue
+            batch = str(plate_meta["Metadata_Batch"].iloc[0])
+            frame = extract_plate(
+                encoder=encoder,
+                plate=str(plate),
+                batch=batch,
+                image_root=Path(args.image_root),
+                wells=allowed_wells[str(plate)],
+                batch_size=args.batch_size,
+            )
+            if not frame.empty:
+                all_frames.append(frame)
 
-    if not all_frames:
-        raise SystemExit("No features extracted")
-    features = pd.concat(all_frames, ignore_index=True)
-    output = Path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    features.to_csv(output, index=False)
-    feature_cols = [col for col in features.columns if col.startswith("feature_")]
-    print(f"saved {output} rows={len(features)} features={len(feature_cols)}")
+        if not all_frames:
+            raise SystemExit("No features extracted")
+        features = pd.concat(all_frames, ignore_index=True)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        features.to_csv(output, index=False)
+        output.with_suffix(output.suffix + ".done").write_text("ok\n", encoding="utf-8")
+        feature_cols = [col for col in features.columns if col.startswith("feature_")]
+        print(f"saved {output} rows={len(features)} features={len(feature_cols)}", flush=True)
+    finally:
+        lock_path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
