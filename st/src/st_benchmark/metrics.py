@@ -64,29 +64,46 @@ def _aggregate_query_scores(query_scores: pd.DataFrame, group_col: str) -> pd.Da
     )
 
 
-def replicate_retrieval(df: pd.DataFrame, min_positive_count: int = 1) -> MetricResult:
+def _normalize_mask(df: pd.DataFrame, mask: object | None, name: str) -> np.ndarray:
+    """Normalize an optional row mask to a boolean numpy array."""
+    if mask is None:
+        return np.ones(len(df), dtype=bool)
+    values = np.asarray(mask, dtype=bool)
+    if values.shape != (len(df),):
+        raise ValueError(f"{name} must have length {len(df)}, got shape {values.shape}")
+    return values
+
+
+def replicate_retrieval(
+    df: pd.DataFrame,
+    min_positive_count: int = 1,
+    query_mask: object | None = None,
+    candidate_mask: object | None = None,
+) -> MetricResult:
     """Cross-plate replicate retrieval using same compound as the positive label."""
     feats = df[feature_columns(df)].to_numpy()
     sim = cosine_similarity_matrix(feats)
     samples = df["Metadata_broad_sample"].to_numpy()
     plates = df["Metadata_Plate"].to_numpy()
     controls = df["Metadata_control_type"].to_numpy()
+    query_allowed = _normalize_mask(df, query_mask, "query_mask")
+    candidate_allowed = _normalize_mask(df, candidate_mask, "candidate_mask")
 
     records: list[dict[str, object]] = []
     for i in range(len(df)):
-        if controls[i] == "negcon":
+        if controls[i] == "negcon" or not query_allowed[i]:
             continue
-        candidate_mask = (plates != plates[i]) & (controls != "negcon")
-        positive_mask = candidate_mask & (samples == samples[i])
+        row_candidate_mask = (plates != plates[i]) & (controls != "negcon") & candidate_allowed
+        positive_mask = row_candidate_mask & (samples == samples[i])
         if int(positive_mask.sum()) < min_positive_count:
             continue
-        labels = positive_mask[candidate_mask]
-        scores = sim[i, candidate_mask]
+        labels = positive_mask[row_candidate_mask]
+        scores = sim[i, row_candidate_mask]
         record = _base_query_frame(df, i)
         record.update(
             metric="replicate_retrieval",
             average_precision=average_precision(labels, scores),
-            n_candidates=int(candidate_mask.sum()),
+            n_candidates=int(row_candidate_mask.sum()),
             n_positives=int(positive_mask.sum()),
         )
         records.append(record)
@@ -96,30 +113,38 @@ def replicate_retrieval(df: pd.DataFrame, min_positive_count: int = 1) -> Metric
     return MetricResult(query_scores=query_scores, aggregate_scores=aggregate)
 
 
-def negcon_challenge(df: pd.DataFrame, min_positive_count: int = 1) -> MetricResult:
+def negcon_challenge(
+    df: pd.DataFrame,
+    min_positive_count: int = 1,
+    query_mask: object | None = None,
+    candidate_mask: object | None = None,
+) -> MetricResult:
     """Rank true treatment replicates against negative controls on other plates."""
     feats = df[feature_columns(df)].to_numpy()
     sim = cosine_similarity_matrix(feats)
     samples = df["Metadata_broad_sample"].to_numpy()
     plates = df["Metadata_Plate"].to_numpy()
     controls = df["Metadata_control_type"].to_numpy()
+    query_allowed = _normalize_mask(df, query_mask, "query_mask")
+    candidate_allowed = _normalize_mask(df, candidate_mask, "candidate_mask")
 
     records: list[dict[str, object]] = []
     for i in range(len(df)):
-        if controls[i] == "negcon":
+        if controls[i] == "negcon" or not query_allowed[i]:
             continue
-        positive_mask = (plates != plates[i]) & (samples == samples[i]) & (controls != "negcon")
-        negcon_mask = (plates != plates[i]) & (controls == "negcon")
-        candidate_mask = positive_mask | negcon_mask
+        base_candidate_mask = (plates != plates[i]) & candidate_allowed
+        positive_mask = base_candidate_mask & (samples == samples[i]) & (controls != "negcon")
+        negcon_mask = base_candidate_mask & (controls == "negcon")
+        row_candidate_mask = positive_mask | negcon_mask
         if int(positive_mask.sum()) < min_positive_count or int(negcon_mask.sum()) == 0:
             continue
-        labels = positive_mask[candidate_mask]
-        scores = sim[i, candidate_mask]
+        labels = positive_mask[row_candidate_mask]
+        scores = sim[i, row_candidate_mask]
         record = _base_query_frame(df, i)
         record.update(
             metric="negcon_challenge",
             average_precision=average_precision(labels, scores),
-            n_candidates=int(candidate_mask.sum()),
+            n_candidates=int(row_candidate_mask.sum()),
             n_positives=int(positive_mask.sum()),
             n_negcons=int(negcon_mask.sum()),
             mean_positive_similarity=float(sim[i, positive_mask].mean()),

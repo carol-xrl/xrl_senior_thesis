@@ -2,7 +2,7 @@
 
 ## Goal
 
-Run a compact but paper-quality study on the CPJUMP1 4-plate U2OS 48h compound subset.
+Run a compact but paper-quality study on CPJUMP1 U2OS compound Cell Painting features, using the 8-plate 24h+48h subset as the main benchmark and the 4-plate 48h subset as a pilot/backbone sanity check.
 
 The experimental goal is not to train the largest possible model. The goal is to answer:
 
@@ -37,18 +37,20 @@ Primary subset:
 | Batch | `2020_11_04_CPJUMP1` |
 | Modality | compound |
 | Cell type | U2OS |
-| Time | 48h |
-| Plates | `BR00117010`, `BR00117011`, `BR00117012`, `BR00117013` |
+| Time | 24h and 48h |
+| Plates | `BR00116995`, `BR00117024`, `BR00117025`, `BR00117026`, `BR00117010`, `BR00117011`, `BR00117012`, `BR00117013` |
 
 Train/validation/test split:
 
 | Split | Plates |
 | --- | --- |
-| Train | `BR00117010`, `BR00117011` |
-| Validation | `BR00117012` |
-| Test | `BR00117013` |
+| Train | `BR00116995`, `BR00117024`, `BR00117010`, `BR00117011` |
+| Validation | `BR00117025`, `BR00117012` |
+| Test | `BR00117026`, `BR00117013` |
 
 Use five fluorescent channels only: AGP, Mito, RNA, ER, DNA.
+
+The 4-plate U2OS compound 48h subset remains useful as a pilot because it is cheaper and allows backbone comparisons. The final training and loss ablations should use the 8-plate split because it is less saturated and tests whether representations generalize across treatment duration.
 
 ## Baselines
 
@@ -106,10 +108,21 @@ We should train only a small number of variants. The best plan is to use one bac
 
 Recommended backbone for training:
 
-- DINOv2 or DINOv3 frozen backbone + trainable projection head first.
+- DINOv2-S/14 frozen backbone + trainable projection head first on the 8-plate feature table.
 - If time allows, fine-tune the last block or adapter layers.
 
 Do not start by full fine-tuning a large ViT. It is risky under the time and budget constraint.
+
+The first training round should be a loss ablation on frozen features:
+
+| Run | Input transform | Loss | Selection |
+| --- | --- | --- | --- |
+| Frozen baseline | raw / plate z-score / negcon z-score | none | no train labels |
+| SupCon head | plate z-score | same-compound supervised contrastive | validation replicate retrieval |
+| Triplet head | plate z-score | same-compound batch-hard triplet | validation replicate retrieval |
+| Proxy-CE head | plate z-score | compound proxy classification | validation replicate retrieval |
+
+This cleanly separates post-hoc normalization tricks from learned feature adaptation.
 
 ## Loss Functions
 
@@ -457,4 +470,3 @@ Fallback order:
 2. Replace DINOv3-B with DINOv3-S if memory is tight.
 3. Use frozen features only if training is too slow.
 4. Use 2 plates if full 4-plate download is too slow, but clearly label as pilot.
-

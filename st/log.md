@@ -602,3 +602,66 @@ Rationale:
 - This is the most efficient expansion because it reuses the same perturbation modality, cell type, platemap, and metrics while testing whether the benchmark conclusions hold across treatment duration.
 - Biologically, 24h vs 48h can change phenotypic maturity and toxicity response; a useful representation should retrieve perturbations across these acquisition states rather than only within one time point.
 - Computationally, it adds about another 143GB of raw fluorescent images, which fits comfortably on the 1TB RunPod volume and keeps the next DINOv2-S extraction tractable.
+
+## 2026-05-27: DINOv2-L/14 4-Plate Baseline
+
+I completed the larger frozen DINOv2-L/14 run on the original 4-plate U2OS compound 48h subset.
+
+Key raw results:
+
+| Metric | Mean AP | Median AP |
+| --- | ---: | ---: |
+| Replicate retrieval | 0.2805 | 0.0476 |
+| Negative-control challenge | 0.3913 | 0.1315 |
+| Target retrieval | 0.0653 | 0.0276 |
+
+Normalization ablation:
+
+| Variant | Replicate mean AP | Negcon mean AP | Target mean AP |
+| --- | ---: | ---: | ---: |
+| raw_l2 | 0.2805 | 0.3913 | 0.0656 |
+| global_zscore_l2 | 0.2926 | 0.4247 | 0.0661 |
+| plate_center_l2 | 0.2918 | 0.4216 | 0.0661 |
+| plate_zscore_l2 | 0.3008 | 0.4358 | 0.0660 |
+| negcon_center_l2 | 0.2820 | 0.4479 | 0.0671 |
+| negcon_zscore_l2 | 0.2680 | 0.4568 | 0.0677 |
+
+Interpretation:
+
+- Scaling from DINOv2-S/B to L helps replicate retrieval slightly, but target retrieval does not improve over DINOv2-B.
+- The normalization pattern is now consistent across three frozen backbones: plate z-score is best for replicate retrieval, while negcon z-score is best for distinguishing treatment replicates from negative controls.
+- This suggests that batch/plate correction is at least as important as generic backbone capacity for this subset.
+
+## 2026-05-27: 8-Plate DINOv2-S/14 Baseline
+
+The 8-plate U2OS compound 24h+48h image download finished on RunPod. All eight plates have 17,280 fluorescent TIFF files each, corresponding to 384 wells x 9 sites x 5 channels. The DINOv2-S/14 fast extractor then processed 27,648 complete sites and wrote 3,072 well-level feature rows.
+
+Key raw 8-plate results:
+
+| Metric | Mean AP | Median AP |
+| --- | ---: | ---: |
+| Replicate retrieval | 0.1323 | 0.0207 |
+| Negative-control challenge | 0.2681 | 0.0639 |
+| Target retrieval | 0.0675 | 0.0284 |
+
+Normalization ablation:
+
+| Variant | Replicate mean AP | Negcon mean AP | Target mean AP |
+| --- | ---: | ---: | ---: |
+| raw_l2 | 0.1323 | 0.2681 | 0.0673 |
+| global_zscore_l2 | 0.1444 | 0.3106 | 0.0718 |
+| plate_center_l2 | 0.1408 | 0.3211 | 0.0715 |
+| plate_zscore_l2 | 0.1551 | 0.3389 | 0.0727 |
+| negcon_center_l2 | 0.1319 | 0.3310 | 0.0747 |
+| negcon_zscore_l2 | 0.1327 | 0.3433 | 0.0744 |
+
+Interpretation:
+
+- The 8-plate benchmark is substantially harder than the 4-plate pilot: raw replicate retrieval drops from about 0.27 to 0.13 because the candidate set now includes both 24h and 48h states.
+- This makes the final benchmark more useful for training experiments; it is not saturated, and there is measurable room for representation learning.
+- Plate z-score remains the best cheap correction for replicate retrieval, while negcon-based correction is strongest for the negative-control challenge and target retrieval.
+
+Next implementation step:
+
+- I added split-aware retrieval support so trained models can be selected on validation plates and reported on held-out test plates.
+- I added a frozen-feature projection-head training script for loss ablations: supervised contrastive, batch-hard triplet, and proxy cross-entropy. These train on the 8-plate train plates only and use validation replicate retrieval for model selection.
