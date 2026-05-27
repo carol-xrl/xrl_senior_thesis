@@ -1036,3 +1036,10 @@ Updated next-step policy:
 - keep all 20 raw image plate directories once restored;
 - let DINOv2-B finish and run the 20-plate multimodal evaluation;
 - after combined S/B feature CSVs and metrics exist, only clean true intermediates such as verbose download logs and plate-level temporary feature shards.
+
+Restore status:
+
+- all four restored plates reached 17,280 TIFFs again;
+- all 20 raw image plate directories are present;
+- raw image storage is about 775GB and `st/outputs` is about 1.4GB;
+- DINOv2-B extraction is continuing from the already-computed feature shards.
