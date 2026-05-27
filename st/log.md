@@ -973,3 +973,20 @@ Reasoning:
 - Plate-level files make the run resumable: if a session dies, completed plates are not recomputed.
 
 This does not change the benchmark definition. It only changes execution scheduling.
+
+## 2026-05-28: Parallel Tail Download
+
+The incremental DINOv2-S queue quickly caught up with the available downloaded plates. At that point the L40S was idle again because the remaining raw images were still downloading sequentially.
+
+I added a small parallel manifest downloader:
+
+- script: `st/scripts/download_manifest_parallel.py`
+- behavior: read the resolved download manifest, skip plates that already have 17,280 TIFFs, and run selected remaining plate downloads in parallel.
+
+Execution plan:
+
+- keep the original `st_download20` process alive so the in-progress plate is not interrupted;
+- launch a separate tail downloader for the last not-yet-started test plates;
+- let the incremental extractor consume each plate as soon as it becomes complete.
+
+This should reduce wall-clock time without changing any data split, benchmark definition, or feature extraction code.
