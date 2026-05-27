@@ -475,3 +475,34 @@ Current full-download estimate:
 - Four plates x 384 wells x 9 sites x 5 fluorescent channels = 69,120 TIFF files.
 - Expected size is roughly 130-160GB, depending on compression.
 - This fits the RunPod persistent storage but not the container overlay.
+
+## 2026-05-27: First Full DINOv2 Result
+
+The 4-plate full image subset finished downloading on RunPod:
+
+- Plate files: 4 x 17,280 TIFFs.
+- Total files: 69,120.
+- Storage: about 143GB under `/workspace/data/cpjump1/images`.
+
+The original single-process extractor was too slow because TIFF decoding and per-channel percentile normalization kept the GPU idle. I replaced the DINO path with `st/scripts/extract_dinov2_fast.py`, which uses parallel TIFF decoding/preprocessing and batched GPU inference.
+
+Full DINOv2-S/14 extraction completed:
+
+- Feature table: `st/outputs/features/dinov2_vits14_full.csv` on RunPod.
+- Rows: 1,536 wells.
+- Feature dimension: 768.
+- Metrics pulled back locally to `st/outputs/metrics/dinov2_vits14_full/`.
+
+Metric summary:
+
+| Metric | mean AP | median AP | queries | groups |
+| --- | ---: | ---: | ---: | ---: |
+| Replicate retrieval | 0.2702 | 0.0421 | 1280 | 306 |
+| Negative-control challenge | 0.3803 | 0.1137 | 1280 | 306 |
+| Target retrieval | 0.0682 | 0.0280 | 302 | 302 |
+
+Interpretation:
+
+- The first real DINOv2 result is not saturated, unlike the synthetic smoke test.
+- This is useful for the thesis because there is room for improvement from domain adaptation, channel choices, plate correction, and contrastive objectives.
+- Same-well/same-compound confounding is still visible and must be discussed explicitly in the benchmark limitations.
