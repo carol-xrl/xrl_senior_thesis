@@ -454,3 +454,24 @@ Reasoning:
 - The `intensity` baseline is a fast sanity baseline. It should not be the main result, but it tells us whether metadata alignment, image loading, and metric evaluation are functional.
 - Batched DINOv2 is the first meaningful neural baseline because it is open-source, stable, strong on morphology-like visual representations, and feasible on one L40S.
 - The pilot uses only A01/A02 because it exercises all 4 plates while keeping download and extraction time small.
+
+## 2026-05-27: Storage Management Decision
+
+Remote disk check:
+
+- `/` and `/data` are a 50GB container overlay.
+- `/workspace` is the large persistent RunPod-mounted storage.
+- The UI's large storage allocation should be treated as `/workspace`, not `/data`.
+
+Decision:
+
+- Keep all full raw image downloads under `/workspace/data/cpjump1/images`.
+- Keep the small A01/A02 pilot copy under `/data/cpjump1/images` only as a temporary validation artifact.
+- Do not copy raw TIFFs back to the Mac.
+- Do not track images, feature CSVs, or logs in git.
+
+Current full-download estimate:
+
+- Four plates x 384 wells x 9 sites x 5 fluorescent channels = 69,120 TIFF files.
+- Expected size is roughly 130-160GB, depending on compression.
+- This fits the RunPod persistent storage but not the container overlay.
