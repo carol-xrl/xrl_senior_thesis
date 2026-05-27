@@ -837,3 +837,35 @@ Interpretation:
 - DINOv2-B is only slightly stronger than DINOv2-S on raw replicate retrieval, but it improves target retrieval.
 - Plate z-score again gives the best replicate retrieval among cheap frozen-feature tricks.
 - The 8-plate task remains meaningfully harder than 4-plate 48h-only evaluation because cross-time retrieval is low.
+
+## 2026-05-28: DINOv2-B/14 Projection-Head Ablation
+
+While the 20-plate image download was running, I reused the completed 8-plate DINOv2-B/14 feature table to run lightweight projection-head training. This keeps GPU time productive without adding image I/O.
+
+Both runs trained on train plates only, selected checkpoints by validation replicate AP, and reported held-out test plate retrieval.
+
+| Run | Loss | Input transform | Best val replicate AP | Test replicate AP | Test negcon AP | Full target AP |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| DINOv2-B SupCon | supervised contrastive | plate_zscore_l2 | 0.3033 | 0.3167 | 0.4257 | 0.0786 |
+| DINOv2-B Proxy-CE | proxy classification | plate_zscore_l2 | 0.3070 | 0.3173 | 0.4261 | 0.0814 |
+
+Interpretation:
+
+- DINOv2-B projection heads match or slightly improve the DINOv2-S head results.
+- Proxy-CE is marginally strongest on validation, held-out replicate retrieval, held-out negcon, and target retrieval.
+- The main learning effect remains consistent across DINOv2-S and DINOv2-B: a small supervised head on plate-normalized frozen features roughly doubles test replicate AP versus frozen raw features.
+
+## 2026-05-28: 20-Plate Download Launch
+
+I resolved the full S3 manifest for the 20-plate multimodal-short benchmark and launched a sequential tmux download:
+
+- tmux session: `st_download20`
+- remote log: `st/outputs/logs/download_multimodal_short_20plate.log`
+- already complete from earlier work: 4 U2OS compound 24h plates
+- remaining to download: 16 plates
+- starting raw image storage: about 291GB under `/workspace/data/cpjump1/images`
+
+Storage note:
+
+- The existing 291GB includes the 8-plate U2OS compound benchmark, four of which are reused by the 20-plate design.
+- Keeping the old 48h compound plates is convenient for reproducibility, but if the RunPod volume approaches capacity, the first cleanup candidate is old raw 48h compound images because their features and metrics have already been extracted.
