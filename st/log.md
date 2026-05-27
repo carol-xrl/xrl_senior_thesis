@@ -1009,3 +1009,11 @@ I added a guarded cleanup helper:
 - delete mode: only removes a raw plate directory after all required `<prefix>_<plate>.csv.done` markers exist.
 
 This keeps the volume below the 1TB limit while preserving reproducibility through the manifest and feature outputs.
+
+I launched the guarded cleanup watcher on RunPod:
+
+- tmux session: `st_cleanup_raw_after_b`
+- log: `st/outputs/logs/cleanup_raw_after_b.log`
+- deletion condition: delete a raw plate directory only after `dinov2_vitb14_multimodal_short_20plate_<plate>.csv.done` exists.
+
+At launch time, DINOv2-S had completed 18/20 plate-level feature files and DINOv2-B had not started yet, so no raw images were deleted immediately.
