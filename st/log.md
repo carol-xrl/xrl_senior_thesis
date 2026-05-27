@@ -1137,3 +1137,32 @@ The synchronized plan now states:
 - frozen encoders can be extracted on all 20 plates because no labels are used during feature extraction;
 - current 20-plate result tables are all-query condition summaries, so the next cleanup step is split-aware test-query reporting;
 - bio-target Proxy-CE should be framed as an annotation-supervised upper bound, not as a label-free baseline.
+
+## 2026-05-28: Ablation Structure Clarified
+
+I refined the experiment plan so the ablations are separated cleanly:
+
+- normalization is a frozen-feature post-hoc batch-correction ablation, not training;
+- loss ablation is the actual training experiment, with DINOv2 frozen and only a small projection head updated;
+- training plus tricks should be included, but only as a focused matrix rather than a full encoder x loss x normalization grid.
+
+The planned normalization transforms are:
+
+- raw L2;
+- global z-score;
+- plate center / plate z-score;
+- negcon center / negcon z-score.
+
+The planned loss ablation is:
+
+- SupCon;
+- triplet margin;
+- proxy / prototype loss;
+- hard-negative SupCon.
+
+The main comparison logic is now:
+
+1. frozen baseline;
+2. frozen + normalization;
+3. training with different losses;
+4. training + best correction, especially negcon correction if it improves held-out metrics.

@@ -186,16 +186,45 @@ Primary frozen baselines:
 
 - DINOv2-S/14
 - DINOv2-B/14
+- DINOv2-L/14 as a smaller-scope backbone scaling reference if compute permits
 
 Normalization variants:
 
 - `raw_l2`
+- `global_zscore_l2`
+- `plate_center_l2`
 - `plate_zscore_l2`
+- `negcon_center_l2`
 - `negcon_zscore_l2`
+
+Write this section as post-hoc feature normalization / batch correction. These transforms are applied after frozen feature extraction and do not train model parameters.
+
+The central biological argument:
+
+- plate correction tests whether acquisition/batch effects can be removed without destroying perturbation signal;
+- negative-control correction is especially defensible because negative controls estimate plate-specific background morphology;
+- normalization should not be confused with supervised representation learning.
 
 ### 4.3 Projection Heads
 
 Use frozen well-level features and train a small MLP projection head.
+
+Projection-head pipeline:
+
+`DINOv2 frozen features -> train projection head on train plates -> evaluate embedding on val/test plates`
+
+Backbone policy:
+
+- do not fine-tune DINOv2;
+- train only the projection head;
+- use train plates for optimization, validation plates for checkpoint selection, and test plates for final reporting.
+
+Loss ablation:
+
+- supervised contrastive loss;
+- triplet margin loss;
+- proxy / prototype classification loss;
+- hard-negative supervised contrastive loss.
 
 Sample Proxy-CE:
 
@@ -216,6 +245,23 @@ Important framing:
 - Bio-target Proxy-CE should not be presented as a label-free model.
 - Its value is to show that cross-modality alignment is possible when target/gene labels are made explicit.
 
+### 4.4 Final Experiment Matrix
+
+The final experiment design should avoid a full encoder x loss x normalization grid. The main text should use this compact matrix:
+
+| Group | Encoder | Training | Trick |
+| --- | --- | --- | --- |
+| baseline | DINOv2-S/B/L | no | raw |
+| frozen + trick | DINOv2-S/B | no | best normalization |
+| loss ablation | DINOv2-S | yes | raw or standard L2 |
+| trained + trick | best trained head | yes | best normalization |
+
+For trained models:
+
+- input to the projection head should be raw L2 or train-fitted global z-score;
+- output embeddings should be evaluated with raw, plate-zscore, and negcon-zscore;
+- `trained + negcon_zscore` can be emphasized if it is best, because it uses only each plate's negative controls rather than test treatment labels.
+
 ## 5. Experiments
 
 ### 5.1 Dataset Summary
@@ -235,9 +281,11 @@ Report:
 
 Main table:
 
-- rows: DINOv2-S/B and normalization variants;
+- rows: DINOv2-S/B/L raw baselines plus DINOv2-S/B normalization variants;
 - columns: replicate retrieval, negative-control challenge, within-modality matching, cross-modality matching;
 - report separately by cell line and modality.
+
+The normalization ablation should be described as frozen + trick, not training.
 
 Key completed results:
 
@@ -258,6 +306,21 @@ Compare:
 | Frozen DINOv2-B + plate z-score | label-free baseline |
 | Sample Proxy-CE | improves exact perturbation retrieval |
 | Bio-target Proxy-CE | upper bound for cross-modality alignment |
+
+Loss ablation table:
+
+| Loss | Training label | Purpose |
+| --- | --- | --- |
+| SupCon | perturbation/sample ID | cluster same perturbation wells |
+| Triplet margin | perturbation/sample ID | enforce positive closer than negative |
+| Proxy/prototype | perturbation/sample ID or bio-target | learn class prototypes efficiently |
+| Hard-negative SupCon | perturbation/sample ID | stress confusing perturbations and controls |
+
+Training plus trick table:
+
+- best loss without post-hoc output correction;
+- best loss + plate-zscore output embedding;
+- best loss + negcon-zscore output embedding.
 
 Completed key results:
 

@@ -194,6 +194,79 @@ Role:
 - Low frozen AP is expected and useful; this is not saturated.
 - Bio-target supervised heads should be framed as an annotation-supervised upper bound, not as a label-free baseline.
 
+## Experimental Matrix
+
+The experiments are divided into two different kinds of ablation. This distinction should stay explicit in the thesis.
+
+### A. Post-Hoc Normalization / Batch-Correction Ablation
+
+This is a frozen-feature baseline plus tricks. No model parameters are trained.
+
+Pipeline:
+
+`DINOv2 frozen encoder -> well-level features -> normalization/batch correction -> metrics`
+
+Candidate transforms:
+
+- `raw_l2`
+- `global_zscore_l2`
+- `plate_center_l2`
+- `plate_zscore_l2`
+- `negcon_center_l2`
+- `negcon_zscore_l2`
+
+Interpretation:
+
+- This is not a training experiment.
+- It tests whether simple feature-space correction removes plate/acquisition variation while preserving perturbation signal.
+- `negcon_center` and `negcon_zscore` are biologically defensible because negative controls are designed to estimate plate-level background morphology.
+- The final paper should call this section post-hoc feature normalization or batch-correction ablation.
+
+### B. Loss Ablation
+
+This is the training experiment. The DINOv2 backbone remains frozen, and only a small projection head is trained.
+
+Pipeline:
+
+`DINOv2 frozen features -> train projection head on train plates -> evaluate embedding on val/test plates`
+
+Loss candidates:
+
+- supervised contrastive loss;
+- triplet margin loss;
+- proxy / prototype classification loss;
+- hard-negative supervised contrastive loss.
+
+Interpretation:
+
+- This tests whether supervised metric learning improves biological retrieval beyond frozen features.
+- The clean first ablation should use one encoder, preferably DINOv2-S/14 for speed, and a simple input transform such as raw L2 or train-fitted global z-score.
+- The loss ablation should be evaluated on validation/test plates, not only all-query condition summaries.
+
+### C. Training Plus Normalization Tricks
+
+This is needed, but we should avoid a full Cartesian product.
+
+Recommended final matrix:
+
+| Group | Encoder | Training | Trick |
+| --- | --- | --- | --- |
+| baseline | DINOv2-S/B/L | no | raw |
+| frozen + trick | DINOv2-S/B | no | best normalization |
+| loss ablation | DINOv2-S | yes | raw or standard L2 |
+| trained + trick | best trained head | yes | best normalization |
+
+Where to apply the trick:
+
+- Before the projection head: use raw L2 or train-fitted global z-score for stable optimization.
+- After the projection head: evaluate the learned embedding with raw, plate-zscore, and negcon-zscore variants.
+
+Final emphasis:
+
+- Report `trained + negcon_zscore` as a main result if it improves metrics, because negative-control correction uses each plate's controls and is biologically reasonable.
+- Also report the uncorrected trained embedding so readers can see how much comes from the loss and how much comes from post-hoc correction.
+- Do not present every possible encoder/loss/normalization combination in the main text; keep large grids in appendix or skip them.
+
 ## Experiments Completed
 
 ### A. 8-Plate U2OS Compound Pilot
@@ -225,6 +298,12 @@ Completed:
 - DINOv2-S/14
 - DINOv2-B/14
 - transforms: `raw_l2`, `plate_zscore_l2`, `negcon_zscore_l2`
+
+Still useful to add if time permits:
+
+- `global_zscore_l2`
+- `plate_center_l2`
+- `negcon_center_l2`
 
 Reports:
 
@@ -261,6 +340,13 @@ Interpretation:
 - Bio-target Proxy-CE strongly improves cross-modality matching because it directly trains on shared target/gene annotations.
 - Bio-target Proxy-CE should be called an annotation-supervised upper bound.
 
+Remaining training ablation:
+
+- Run the smaller, controlled loss ablation on DINOv2-S features.
+- Compare SupCon, triplet margin, proxy/prototype, and hard-negative SupCon.
+- Keep DINOv2 frozen in all cases.
+- Use train plates only for optimization, validation plates for checkpoint selection, and test plates for final reporting.
+
 ## Current Key Results
 
 | Condition | Metric | Frozen DINOv2-B + plate z-score | Sample Proxy-CE | Bio-target Proxy-CE |
@@ -284,13 +370,20 @@ Priority 1: split-aware final reporting.
 - Keep training labels restricted to train plates.
 - Report validation checkpoint selection separately from final test metrics.
 
-Priority 2: figures for the thesis.
+Priority 2: complete the focused ablation matrix.
+
+- Add missing frozen normalization transforms if fast: global z-score, plate center, and negcon center.
+- Run DINOv2-S projection-head loss ablation: SupCon, triplet, proxy/prototype, hard-negative SupCon.
+- Evaluate the best trained head with raw, plate-zscore, and negcon-zscore output embeddings.
+- Keep the main paper focused on baseline, frozen + best trick, loss ablation, and trained + best trick.
+
+Priority 3: figures for the thesis.
 
 - Bar plots for frozen vs sample Proxy-CE vs bio-target Proxy-CE.
 - Separate replicate retrieval and cross-modality figures.
 - Dataset composition figure: plates by cell line, modality, split.
 
-Priority 3: write analysis.
+Priority 4: write analysis.
 
 - Explain why cross-modality is hard.
 - Explain why bio-target head is an upper bound.

@@ -221,6 +221,14 @@ Role:
 
 ## Baselines And Adaptation
 
+### Frozen Baselines And Normalization Tricks
+
+Normalization is a post-hoc feature transformation, not model training.
+
+Pipeline:
+
+`DINOv2 frozen encoder -> well-level features -> normalization/batch correction -> metrics`
+
 Completed frozen baselines:
 
 - DINOv2-S/14;
@@ -228,6 +236,33 @@ Completed frozen baselines:
 - `raw_l2`;
 - `plate_zscore_l2`;
 - `negcon_zscore_l2`.
+
+Planned or optional frozen transforms:
+
+- `global_zscore_l2`;
+- `plate_center_l2`;
+- `negcon_center_l2`.
+
+Biological rationale:
+
+- global z-score tests generic feature scaling;
+- plate center/z-score tests plate-level acquisition correction;
+- negcon center/z-score uses each plate's negative controls as an estimate of background morphology, which is the most biologically defensible correction.
+
+### Loss Ablation
+
+Loss ablation is the actual training experiment. DINOv2 remains frozen and only a small projection head is trained.
+
+Pipeline:
+
+`DINOv2 frozen features -> train projection head on train plates -> evaluate embedding on val/test plates`
+
+Loss candidates:
+
+- supervised contrastive loss;
+- triplet margin loss;
+- proxy / prototype loss;
+- hard-negative supervised contrastive loss.
 
 Completed trained heads:
 
@@ -239,6 +274,25 @@ Interpretation:
 - Frozen DINOv2 is the label-free baseline.
 - Sample Proxy-CE uses exact perturbation/sample labels and should mainly improve replicate retrieval.
 - Bio-target Proxy-CE uses target/gene labels and should be framed as an annotation-supervised upper bound for cross-modality matching.
+
+### Training Plus Tricks
+
+The final design should include training plus normalization, but not every possible combination.
+
+Recommended matrix:
+
+| Group | Encoder | Training | Trick |
+| --- | --- | --- | --- |
+| baseline | DINOv2-S/B/L | no | raw |
+| frozen + trick | DINOv2-S/B | no | best normalization |
+| loss ablation | DINOv2-S | yes | raw or standard L2 |
+| trained + trick | best trained head | yes | best normalization |
+
+Implementation rule:
+
+- apply raw L2 or train-fitted global z-score before projection-head training;
+- after training, evaluate output embeddings with raw, plate-zscore, and negcon-zscore;
+- emphasize `trained + negcon_zscore` only if it improves held-out metrics.
 
 ## Current Result Pattern
 
@@ -272,9 +326,13 @@ Priority 1:
 
 Priority 2:
 
-- make figures for dataset composition, frozen baselines, and projection-head comparison.
+- finish the focused loss ablation and trained-plus-trick comparison.
 
 Priority 3:
+
+- make figures for dataset composition, frozen baselines, and projection-head comparison.
+
+Priority 4:
 
 - report artifact diagnostics where possible, especially plate and well-position sensitivity.
 
