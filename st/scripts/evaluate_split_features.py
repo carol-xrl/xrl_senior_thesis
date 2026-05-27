@@ -14,6 +14,7 @@ sys.path.insert(0, str(ST_DIR / "src"))
 from st_benchmark.evaluate import read_table, write_table
 from st_benchmark.metadata import build_subset_metadata, load_config
 from st_benchmark.split_eval import evaluate_split_retrieval
+from st_benchmark.transforms import transformed_features
 
 
 def main() -> None:
@@ -23,6 +24,20 @@ def main() -> None:
     parser.add_argument("--repo-root", default=".")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--prefix", default="features")
+    parser.add_argument(
+        "--input-transform",
+        default="none",
+        choices=[
+            "none",
+            "raw_l2",
+            "global_zscore_l2",
+            "plate_center_l2",
+            "plate_zscore_l2",
+            "negcon_center_l2",
+            "negcon_zscore_l2",
+        ],
+        help="Optional feature transform before split-aware retrieval.",
+    )
     parser.add_argument("--write-query-tables", action="store_true")
     args = parser.parse_args()
 
@@ -30,6 +45,8 @@ def main() -> None:
     config = load_config(args.config)
     metadata = build_subset_metadata(config, repo_root)
     features = read_table(args.features)
+    if args.input_transform != "none":
+        features = transformed_features(features, metadata, args.input_transform)
 
     summary, query_tables = evaluate_split_retrieval(
         features,
@@ -48,4 +65,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
