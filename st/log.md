@@ -869,3 +869,41 @@ Storage note:
 
 - The existing 291GB includes the 8-plate U2OS compound benchmark, four of which are reused by the 20-plate design.
 - Keeping the old 48h compound plates is convenient for reproducibility, but if the RunPod volume approaches capacity, the first cleanup candidate is old raw 48h compound images because their features and metrics have already been extracted.
+
+## 2026-05-28: Storage Cleanup and Multimodal Experiment Queue
+
+After the final benchmark moved to 20-plate multimodal-short, I removed raw image plates that are not part of that final set:
+
+- deleted from `/workspace/data/cpjump1/images/2020_11_04_CPJUMP1/`: `BR00117010`, `BR00117011`, `BR00117012`, `BR00117013`
+- deleted old pilot images from `/data/cpjump1/images`
+
+This reduced raw image storage from about 331GB to about 234GB and freed the small 50GB container overlay back to about 6% usage.
+
+I also added and launched the post-download runner:
+
+- script: `st/scripts/run_after_download_multimodal.sh`
+- tmux session: `st_after20`
+- behavior: wait until all 20 final plates have 17,280 fluorescent-channel TIFFs, then run DINOv2-S/14 and DINOv2-B/14 feature extraction, followed by multimodal evaluation under `raw_l2`, `plate_zscore_l2`, and `negcon_zscore_l2`.
+
+Cross-modality benchmark status:
+
+- Implemented in `st/src/st_benchmark/multimodal.py`.
+- Entry point: `st/scripts/evaluate_multimodal_features.py`.
+- The 20-plate runs will report compound-to-CRISPR and compound-to-ORF matching separately for A549 and U2OS.
+
+During download, I also completed a DINOv2-L/14 8-plate U2OS compound baseline:
+
+| Variant | Replicate mean AP | Negcon mean AP | Target mean AP |
+| --- | ---: | ---: | ---: |
+| raw_l2 | 0.1345 | 0.2689 | 0.0688 |
+| global_zscore_l2 | 0.1478 | 0.3120 | 0.0764 |
+| plate_center_l2 | 0.1418 | 0.3160 | 0.0725 |
+| plate_zscore_l2 | 0.1540 | 0.3333 | 0.0766 |
+| negcon_center_l2 | 0.1339 | 0.3263 | 0.0745 |
+| negcon_zscore_l2 | 0.1338 | 0.3411 | 0.0767 |
+
+Interpretation:
+
+- DINOv2-L does not materially beat DINOv2-S/B on the 8-plate task.
+- The repeated pattern is now strong: plate z-score helps perturbation retrieval most, while negcon z-score helps negative-control separation most.
+- This supports focusing the final paper story on benchmark design, normalization, and supervised/adaptation losses rather than only scaling generic vision backbones.
