@@ -568,3 +568,37 @@ Interpretation:
 - DINOv2-B/14 gives a modest raw improvement over DINOv2-S/14, especially target retrieval (0.0753 vs about 0.068).
 - The same normalization pattern holds: plate z-score is strongest for replicate retrieval, while negcon z-score is strongest for the negative-control challenge.
 - This is a useful paper result because it separates backbone capacity from domain/batch correction: scaling the frozen vision backbone helps a little, but biological retrieval still depends strongly on plate-aware normalization.
+
+## 2026-05-27: Preparing the 8-Plate U2OS Compound Extension
+
+After the 4-plate 48h benchmark produced stable but not saturated results, I prepared the next scale-up experiment: U2OS compound at both 24h and 48h. This adds the four U2OS 24h compound plates while retaining the original four U2OS 48h plates.
+
+Selected plates:
+
+| Time | Plates |
+| ---: | --- |
+| 24h | `BR00116995`, `BR00117024`, `BR00117025`, `BR00117026` |
+| 48h | `BR00117010`, `BR00117011`, `BR00117012`, `BR00117013` |
+
+The new config is `st/configs/subset_u2os_compound_8plate.yaml`. It uses balanced splits across time:
+
+- train: two 24h plates and two 48h plates
+- val: one 24h plate and one 48h plate
+- test: one 24h plate and one 48h plate
+
+Metadata summary:
+
+| Name | Value |
+| --- | ---: |
+| wells | 3,072 |
+| plates | 8 |
+| treatment wells | 2,560 |
+| negative-control wells | 512 |
+| unique broad samples | 307 |
+| annotated treatment wells | 2,560 |
+
+Rationale:
+
+- This is the most efficient expansion because it reuses the same perturbation modality, cell type, platemap, and metrics while testing whether the benchmark conclusions hold across treatment duration.
+- Biologically, 24h vs 48h can change phenotypic maturity and toxicity response; a useful representation should retrieve perturbations across these acquisition states rather than only within one time point.
+- Computationally, it adds about another 143GB of raw fluorescent images, which fits comfortably on the 1TB RunPod volume and keeps the next DINOv2-S extraction tractable.

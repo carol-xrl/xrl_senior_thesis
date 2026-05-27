@@ -33,6 +33,13 @@ def selected_plates(config: dict[str, Any]) -> list[str]:
     return plates
 
 
+def _subset_filter(frame: pd.DataFrame, column: str, value: Any) -> pd.Series:
+    """Return a boolean mask for a scalar or list-valued subset criterion."""
+    if isinstance(value, (list, tuple, set)):
+        return frame[column].isin(value)
+    return frame[column] == value
+
+
 def load_experiment_metadata(config: dict[str, Any], repo_root: str | Path) -> pd.DataFrame:
     """Load and filter the CPJUMP1 experiment metadata for the configured subset."""
     repo_root = Path(repo_root)
@@ -41,13 +48,13 @@ def load_experiment_metadata(config: dict[str, Any], repo_root: str | Path) -> p
     df = pd.read_csv(exp_path, sep="\t")
 
     filtered = df[
-        (df["Batch"] == subset["batch"])
-        & (df["Perturbation"] == subset["perturbation"])
-        & (df["Cell_type"] == subset["cell_type"])
-        & (df["Time"] == subset["time"])
-        & (df["Density"] == subset["density"])
-        & (df["Antibiotics"] == subset["antibiotics"])
-        & (df["Cell_line"] == subset["cell_line"])
+        _subset_filter(df, "Batch", subset["batch"])
+        & _subset_filter(df, "Perturbation", subset["perturbation"])
+        & _subset_filter(df, "Cell_type", subset["cell_type"])
+        & _subset_filter(df, "Time", subset["time"])
+        & _subset_filter(df, "Density", subset["density"])
+        & _subset_filter(df, "Antibiotics", subset["antibiotics"])
+        & _subset_filter(df, "Cell_line", subset["cell_line"])
         & (df["Assay_Plate_Barcode"].isin(selected_plates(config)))
     ].copy()
 
@@ -208,4 +215,3 @@ def summarize_metadata(metadata: pd.DataFrame) -> pd.DataFrame:
         ),
     ]
     return pd.DataFrame(rows, columns=["name", "value"])
-

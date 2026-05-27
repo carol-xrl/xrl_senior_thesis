@@ -1,0 +1,59 @@
+name: subset_u2os_compound_8plate
+
+paths:
+  experiment_metadata: benchmark/output/experiment-metadata.tsv
+  compound_annotations: benchmark/input/JUMP-Target-1_compound_metadata_additional_annotations.tsv
+  platemap: metadata/platemaps/2020_11_04_CPJUMP1/platemap/JUMP-Target-1_compound_platemap.txt
+  metadata_output: st/data/metadata/subset_u2os_compound_8plate_well_metadata.csv
+  split_output: st/data/splits/subset_u2os_compound_8plate_splits.csv
+  download_manifest_output: st/data/metadata/subset_u2os_compound_8plate_download_manifest.csv
+  download_commands_output: st/outputs/logs/subset_u2os_compound_8plate_download_commands.sh
+
+subset:
+  batch: 2020_11_04_CPJUMP1
+  perturbation: compound
+  cell_type: U2OS
+  time: [24, 48]
+  density: 100
+  antibiotics: absent
+  cell_line: Parental
+  plates:
+    train:
+      - BR00116995
+      - BR00117024
+      - BR00117010
+      - BR00117011
+    val:
+      - BR00117025
+      - BR00117012
+    test:
+      - BR00117026
+      - BR00117013
+
+images:
+  s3_base: s3://cellpainting-gallery/cpg0000-jump-pilot/source_4/images
+  remote_image_root: /workspace/data/cpjump1/images
+  fluorescent_channels: [1, 2, 3, 4, 5]
+  channel_names:
+    1: AGP
+    2: Mito
+    3: RNA
+    4: ER
+    5: DNA
+  default_sites_per_well: 9
+  raw_plate_size_estimate_gb_all_channels: 64
+  raw_plate_size_estimate_gb_fluorescent_only: 40
+
+metrics:
+  min_positive_count: 1
+  bootstrap_iterations: 1000
+  random_seed: 42
+
+smoke:
+  synthetic_feature_dim: 64
+  random_seed: 42
+  compound_signal: 2.0
+  target_signal: 0.6
+  plate_signal: 0.35
+  well_position_signal: 0.15
+  noise: 0.25
