@@ -990,3 +990,22 @@ Execution plan:
 - let the incremental extractor consume each plate as soon as it becomes complete.
 
 This should reduce wall-clock time without changing any data split, benchmark definition, or feature extraction code.
+
+## 2026-05-28: Disk Safety Plan
+
+After the 20-plate download completed, the raw image directory was about 775GB and `st/outputs` was about 1.1GB. The RunPod UI reported roughly 845GB / 1TB volume usage, so the correct mitigation is to stop all download processes and avoid retaining raw images longer than necessary.
+
+Current storage policy:
+
+- all raw downloads are complete; no `aws s3 sync` process remains active;
+- keep raw TIFFs until both frozen feature sets needed for the final benchmark are extracted;
+- after the DINOv2-B plate-level feature file exists for a plate, that plate's raw image directory can be deleted safely because the multimodal evaluation uses feature CSVs, not raw TIFFs;
+- if a feature extraction must be rerun after deletion, the affected plate can be re-downloaded from the public Cell Painting Gallery manifest.
+
+I added a guarded cleanup helper:
+
+- script: `st/scripts/cleanup_raw_after_features.py`
+- default mode: dry-run only;
+- delete mode: only removes a raw plate directory after all required `<prefix>_<plate>.csv.done` markers exist.
+
+This keeps the volume below the 1TB limit while preserving reproducibility through the manifest and feature outputs.
