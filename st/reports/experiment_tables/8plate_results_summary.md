@@ -34,3 +34,21 @@ These tables summarize completed 24h+48h U2OS compound experiments. Test metrics
 | DINOv2-S/14 | SupCon | negcon_zscore_l2 | 0.2765 | 0.2932 | 0.4107 | 0.4628 | 0.5469 | 0.0715 |
 | DINOv2-S/14 | SupCon | raw_l2 | 0.2389 | 0.2494 | 0.4062 | 0.3535 | 0.4964 | 0.0834 |
 | DINOv2-S/14 | Triplet | plate_zscore_l2 | 0.2234 | 0.2249 | 0.3482 | 0.2587 | 0.3749 | 0.0854 |
+
+## DINOv2-L Proxy-CE Seed Robustness
+
+| seed | model | loss | input_transform | best_val_replicate_ap | test_replicate_ap | test_negcon_ap | full_replicate_ap | full_negcon_ap | target_ap |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 42 | DINOv2-L/14 | Proxy-CE | plate_zscore_l2 | 0.3113 | 0.3199 | 0.4346 | 0.4894 | 0.5693 | 0.0812 |
+| 1 | DINOv2-L/14 | Proxy-CE | plate_zscore_l2 | 0.3089 | 0.3217 | 0.4291 | 0.4872 | 0.5670 | 0.0835 |
+| 2 | DINOv2-L/14 | Proxy-CE | plate_zscore_l2 | 0.3175 | 0.3289 | 0.4377 | 0.4944 | 0.5733 | 0.0823 |
+| 3 | DINOv2-L/14 | Proxy-CE | plate_zscore_l2 | 0.3144 | 0.3254 | 0.4271 | 0.4921 | 0.5653 | 0.0807 |
+
+## Seed Robustness Aggregate
+
+| metric | mean | std | min | max | n |
+| --- | --- | --- | --- | --- | --- |
+| best_val_replicate_ap | 0.3131 | 0.0037 | 0.3089 | 0.3175 | 4 |
+| test_replicate_ap | 0.3240 | 0.0040 | 0.3199 | 0.3289 | 4 |
+| test_negcon_ap | 0.4321 | 0.0049 | 0.4271 | 0.4377 | 4 |
+| target_ap | 0.0820 | 0.0012 | 0.0807 | 0.0835 | 4 |

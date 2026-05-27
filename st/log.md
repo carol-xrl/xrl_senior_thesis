@@ -945,3 +945,14 @@ Current best 8-plate result:
 | Model | Loss | Transform | Best val replicate AP | Test replicate AP | Test negcon AP | Target AP |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
 | DINOv2-L/14 | Proxy-CE | plate_zscore_l2 | 0.3113 | 0.3199 | 0.4346 | 0.0812 |
+
+I also ran three additional seeds for the strongest DINOv2-L/14 Proxy-CE setting:
+
+| Seeds | Test replicate AP mean | Test replicate AP std | Test negcon AP mean | Target AP mean |
+| --- | ---: | ---: | ---: | ---: |
+| 42, 1, 2, 3 | 0.3240 | 0.0040 | 0.4321 | 0.0820 |
+
+Interpretation:
+
+- The best 8-plate trained-head result is stable across seeds.
+- The seed variation is much smaller than the gain over frozen raw features, so the improvement is not a random-seed artifact.

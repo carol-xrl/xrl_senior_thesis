@@ -100,6 +100,42 @@ HEAD_RUNS = [
 ]
 
 
+SEED_RUNS = [
+    {
+        "seed": 42,
+        "model": "DINOv2-L/14",
+        "loss": "Proxy-CE",
+        "input_transform": "plate_zscore_l2",
+        "prefix": "dinov2_vitl14_proxy_plate_zscore",
+        "dir": "dinov2_vitl14_u2os_compound_8plate_head_proxy_plate_zscore",
+    },
+    {
+        "seed": 1,
+        "model": "DINOv2-L/14",
+        "loss": "Proxy-CE",
+        "input_transform": "plate_zscore_l2",
+        "prefix": "dinov2_vitl14_proxy_plate_zscore_seed1",
+        "dir": "dinov2_vitl14_u2os_compound_8plate_head_proxy_plate_zscore_seed1",
+    },
+    {
+        "seed": 2,
+        "model": "DINOv2-L/14",
+        "loss": "Proxy-CE",
+        "input_transform": "plate_zscore_l2",
+        "prefix": "dinov2_vitl14_proxy_plate_zscore_seed2",
+        "dir": "dinov2_vitl14_u2os_compound_8plate_head_proxy_plate_zscore_seed2",
+    },
+    {
+        "seed": 3,
+        "model": "DINOv2-L/14",
+        "loss": "Proxy-CE",
+        "input_transform": "plate_zscore_l2",
+        "prefix": "dinov2_vitl14_proxy_plate_zscore_seed3",
+        "dir": "dinov2_vitl14_u2os_compound_8plate_head_proxy_plate_zscore_seed3",
+    },
+]
+
+
 METRIC_COLUMNS = {
     "replicate_retrieval": "full_replicate_ap",
     "negcon_challenge": "full_negcon_ap",
@@ -191,6 +227,49 @@ def collect_heads(metrics_root: Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def collect_seed_robustness(metrics_root: Path) -> pd.DataFrame:
+    rows = []
+    for run in SEED_RUNS:
+        base = metrics_root / run["dir"]
+        prefix = run["prefix"]
+        summary = read_csv(base / f"{prefix}_summary.csv")
+        split = read_csv(base / f"{prefix}_split_retrieval_summary.csv")
+        history = read_csv(base / f"{prefix}_train_history.csv")
+        row = {
+            "seed": run["seed"],
+            "model": run["model"],
+            "loss": run["loss"],
+            "input_transform": run["input_transform"],
+            "best_val_replicate_ap": best_val(history),
+            "test_replicate_ap": split_value(split, "test_queries", "replicate_retrieval"),
+            "test_negcon_ap": split_value(split, "test_queries", "negcon_challenge"),
+        }
+        for metric, col in METRIC_COLUMNS.items():
+            row[col] = metric_value(summary, metric)
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def summarize_seeds(seed_rows: pd.DataFrame) -> pd.DataFrame:
+    if seed_rows.empty:
+        return pd.DataFrame()
+    metrics = ["best_val_replicate_ap", "test_replicate_ap", "test_negcon_ap", "target_ap"]
+    rows = []
+    for metric in metrics:
+        values = seed_rows[metric].dropna()
+        rows.append(
+            {
+                "metric": metric,
+                "mean": float(values.mean()) if len(values) else np.nan,
+                "std": float(values.std(ddof=1)) if len(values) > 1 else np.nan,
+                "min": float(values.min()) if len(values) else np.nan,
+                "max": float(values.max()) if len(values) else np.nan,
+                "n": int(len(values)),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def markdown_table(df: pd.DataFrame, float_digits: int = 4) -> str:
     if df.empty:
         return "_No rows._"
@@ -278,17 +357,25 @@ def plot_normalization(transforms: pd.DataFrame, output_dir: Path) -> Path:
     return path
 
 
-def write_outputs(output_dir: Path, frozen: pd.DataFrame, transforms: pd.DataFrame, heads: pd.DataFrame) -> None:
+def write_outputs(
+    output_dir: Path,
+    frozen: pd.DataFrame,
+    transforms: pd.DataFrame,
+    heads: pd.DataFrame,
+    seeds: pd.DataFrame,
+) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     frozen.to_csv(output_dir / "8plate_frozen_backbones.csv", index=False)
     transforms.to_csv(output_dir / "8plate_normalization_ablation.csv", index=False)
     heads.to_csv(output_dir / "8plate_projection_head_ablation.csv", index=False)
+    seeds.to_csv(output_dir / "8plate_proxy_seed_robustness.csv", index=False)
     figure_dir = output_dir / "figures"
     figure_dir.mkdir(parents=True, exist_ok=True)
     plot_normalization(transforms, figure_dir)
     plot_projection_heads(heads, figure_dir)
 
     best_heads = heads.sort_values("test_replicate_ap", ascending=False).reset_index(drop=True)
+    seed_summary = summarize_seeds(seeds)
     best_transforms = (
         transforms.sort_values(["model", "full_replicate_ap"], ascending=[True, False])
         .groupby("model", as_index=False)
@@ -306,6 +393,10 @@ def write_outputs(output_dir: Path, frozen: pd.DataFrame, transforms: pd.DataFra
             markdown_table(best_transforms),
             "## Projection-Head Ablation",
             markdown_table(best_heads),
+            "## DINOv2-L Proxy-CE Seed Robustness",
+            markdown_table(seeds),
+            "## Seed Robustness Aggregate",
+            markdown_table(seed_summary),
         ]
     )
     (output_dir / "8plate_results_summary.md").write_text(report + "\n", encoding="utf-8")
@@ -322,7 +413,8 @@ def main() -> None:
     frozen = collect_frozen(metrics_root)
     transforms = collect_transforms(metrics_root)
     heads = collect_heads(metrics_root)
-    write_outputs(output_dir, frozen, transforms, heads)
+    seeds = collect_seed_robustness(metrics_root)
+    write_outputs(output_dir, frozen, transforms, heads, seeds)
     print(f"wrote {output_dir / '8plate_results_summary.md'}")
     print(markdown_table(heads.sort_values("test_replicate_ap", ascending=False).head(5)))
 
