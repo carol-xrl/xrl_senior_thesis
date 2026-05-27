@@ -506,3 +506,28 @@ Interpretation:
 - The first real DINOv2 result is not saturated, unlike the synthetic smoke test.
 - This is useful for the thesis because there is room for improvement from domain adaptation, channel choices, plate correction, and contrastive objectives.
 - Same-well/same-compound confounding is still visible and must be discussed explicitly in the benchmark limitations.
+
+## 2026-05-27: DINOv2 Feature Normalization Tricks
+
+I evaluated cheap post-processing variants on the completed DINOv2-S/14 full feature table. This does not reread images or use the GPU; it tests whether simple batch/plate correction improves benchmark metrics.
+
+Comparison file:
+
+- `st/outputs/metrics/dinov2_vits14_transforms/dinov2_vits14_transform_comparison.csv`
+
+Key results:
+
+| Variant | Replicate mean AP | Negcon mean AP | Target mean AP |
+| --- | ---: | ---: | ---: |
+| raw_l2 | 0.2702 | 0.3803 | 0.0680 |
+| global_zscore_l2 | 0.2812 | 0.4168 | 0.0709 |
+| plate_center_l2 | 0.2864 | 0.4235 | 0.0689 |
+| plate_zscore_l2 | 0.2989 | 0.4356 | 0.0701 |
+| negcon_center_l2 | 0.2765 | 0.4514 | 0.0695 |
+| negcon_zscore_l2 | 0.2646 | 0.4546 | 0.0706 |
+
+Interpretation:
+
+- Plate z-score is the best simple correction for replicate retrieval.
+- Negative-control centering/z-scoring is strongest for the negative-control challenge.
+- This supports including feature normalization as an explicit trick ablation in the thesis, because it improves the real benchmark without additional model training.
