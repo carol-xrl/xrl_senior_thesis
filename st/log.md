@@ -665,3 +665,38 @@ Next implementation step:
 
 - I added split-aware retrieval support so trained models can be selected on validation plates and reported on held-out test plates.
 - I added a frozen-feature projection-head training script for loss ablations: supervised contrastive, batch-hard triplet, and proxy cross-entropy. These train on the 8-plate train plates only and use validation replicate retrieval for model selection.
+
+## 2026-05-27: 8-Plate Split Metrics and Projection-Head Loss Ablation
+
+I generated split-aware metrics for the frozen 8-plate DINOv2-S/14 baseline:
+
+| Scope | Replicate mean AP | Negcon mean AP |
+| --- | ---: | ---: |
+| all queries | 0.1323 | 0.2681 |
+| train queries | 0.1317 | 0.2715 |
+| val queries | 0.1309 | 0.2630 |
+| test queries | 0.1351 | 0.2663 |
+| within 24h | 0.2171 | 0.3074 |
+| within 48h | 0.2702 | 0.3803 |
+| 24h -> 48h | 0.0670 | 0.2387 |
+| 48h -> 24h | 0.0892 | 0.2589 |
+
+This confirms that the main difficulty in the 8-plate setting is cross-duration generalization. The 48h-only result matches the original 4-plate pilot, while cross-time retrieval is much lower.
+
+I then trained a small projection head on frozen DINOv2-S/14 well features. Training used only the train plates and same-compound labels, so these are weakly supervised adaptation experiments, not frozen baselines. Model selection used validation replicate retrieval.
+
+| Run | Loss | Input transform | Best val replicate AP | Test replicate AP | Full target AP |
+| --- | --- | --- | ---: | ---: | ---: |
+| SupCon + plate z-score | supervised contrastive | plate_zscore_l2 | 0.2935 | 0.3031 | 0.0781 |
+| Proxy-CE + plate z-score | proxy classification | plate_zscore_l2 | 0.2911 | 0.3036 | 0.0787 |
+| SupCon + negcon z-score | supervised contrastive | negcon_zscore_l2 | 0.2765 | 0.2932 | 0.0715 |
+| SupCon + raw L2 | supervised contrastive | raw_l2 | 0.2389 | 0.2494 | 0.0834 |
+| Triplet + plate z-score | batch-hard triplet | plate_zscore_l2 | 0.2234 | 0.2249 | 0.0854 |
+
+Interpretation:
+
+- SupCon and proxy-CE with plate z-score give the strongest replicate retrieval and roughly double held-out test replicate AP versus the frozen raw 8-plate baseline.
+- Plate z-score is the best training input trick for replicate retrieval; negcon z-score remains useful but is weaker for this supervised retrieval objective.
+- Target AP improves only modestly. This is expected because the training labels optimize compound identity, not mechanism or target overlap.
+- The triplet run is weaker and shows a near-collapsed representation in artifact summaries, so it should be treated as a negative result rather than a candidate final method.
+- Because the same compound occupies the same well position across plates, these supervised runs can still benefit from well-position confounding. The paper should frame this as weakly supervised perturbation adaptation and keep artifact sensitivity in the main results table.
