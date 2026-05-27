@@ -73,3 +73,7 @@ run_model() {
 wait_for_downloads
 run_model dinov2_vits14 64 dinov2_vits14_multimodal_short_20plate
 run_model dinov2_vitb14 48 dinov2_vitb14_multimodal_short_20plate
+python st/scripts/summarize_multimodal_results.py \
+  --metrics-root st/outputs/metrics \
+  --output-dir st/reports/experiment_tables \
+  2>&1 | tee st/outputs/logs/summarize_multimodal_short_20plate.log
