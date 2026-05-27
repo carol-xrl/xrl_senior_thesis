@@ -907,3 +907,15 @@ Interpretation:
 - DINOv2-L does not materially beat DINOv2-S/B on the 8-plate task.
 - The repeated pattern is now strong: plate z-score helps perturbation retrieval most, while negcon z-score helps negative-control separation most.
 - This supports focusing the final paper story on benchmark design, normalization, and supervised/adaptation losses rather than only scaling generic vision backbones.
+
+DINOv2-L projection-head ablation:
+
+| Run | Loss | Input transform | Best val replicate AP | Test replicate AP | Test negcon AP | Full target AP |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| DINOv2-L SupCon | supervised contrastive | plate_zscore_l2 | 0.3096 | 0.3080 | 0.4144 | 0.0710 |
+| DINOv2-L Proxy-CE | proxy classification | plate_zscore_l2 | 0.3113 | 0.3199 | 0.4346 | 0.0812 |
+
+Interpretation:
+
+- Proxy-CE on DINOv2-L gives the best 8-plate head result so far for held-out replicate retrieval.
+- The gain over DINOv2-B Proxy-CE is small, so the stronger conclusion remains that supervised projection and plate normalization matter more than backbone scaling alone.
