@@ -14,6 +14,22 @@ The current study is no longer the earlier 4-plate or 8-plate compound-only pilo
 
 The practical goal remains constrained: complete experiments, figures, and analysis quickly on one RunPod L40S GPU while keeping raw images on the server.
 
+## Execution Goal For This Project
+
+The working goal from this point forward is to complete this experiment plan, not to keep expanding the benchmark unless a result is clearly necessary for the thesis argument.
+
+The plan is complete when we have:
+
+1. a fixed 20-plate benchmark with documented train/val/test plates;
+2. frozen DINOv2 baselines and normalization/batch-correction ablations;
+3. projection-head loss ablations with DINOv2 frozen;
+4. a trained-plus-correction comparison using the best projection head;
+5. split-aware held-out test tables;
+6. final thesis figures and result tables;
+7. a written interpretation that separates label-free, sample-supervised, and bio-target-supervised results.
+
+This means future work should be judged against the checklist below. Optional extensions are allowed only if they strengthen the story without delaying the required tables, figures, and analysis.
+
 ## Dataset Definition
 
 Config file:
@@ -369,6 +385,7 @@ Priority 1: split-aware final reporting.
 - Add test-query-only tables for frozen DINOv2-B, sample Proxy-CE, and bio-target Proxy-CE.
 - Keep training labels restricted to train plates.
 - Report validation checkpoint selection separately from final test metrics.
+- Save both all-query condition summaries and held-out test-query summaries, with the test-query table treated as the primary final result.
 
 Priority 2: complete the focused ablation matrix.
 
@@ -376,24 +393,63 @@ Priority 2: complete the focused ablation matrix.
 - Run DINOv2-S projection-head loss ablation: SupCon, triplet, proxy/prototype, hard-negative SupCon.
 - Evaluate the best trained head with raw, plate-zscore, and negcon-zscore output embeddings.
 - Keep the main paper focused on baseline, frozen + best trick, loss ablation, and trained + best trick.
+- Avoid a full DINOv2-S/B/L x loss x normalization grid unless the main results are already finished.
 
 Priority 3: figures for the thesis.
 
 - Bar plots for frozen vs sample Proxy-CE vs bio-target Proxy-CE.
 - Separate replicate retrieval and cross-modality figures.
 - Dataset composition figure: plates by cell line, modality, split.
+- Include at least one figure that makes the central story obvious: sample-level training improves replicate retrieval, while bio-target supervision is needed for strong cross-modality alignment.
 
 Priority 4: write analysis.
 
 - Explain why cross-modality is hard.
 - Explain why bio-target head is an upper bound.
 - Explain why sample identity training helps replicate retrieval but not cross-modality.
+- State clearly that the split is held-out plate generalization, not held-out perturbation identity generalization.
 
 Optional:
 
 - Seed repeat for the 20-plate sample Proxy-CE head.
 - A smaller DINOv2-S head if we need a compute/efficiency comparison.
 - A split-aware bio-target variant that trains only on train target labels and evaluates unseen/held-out plates.
+
+## Required Artifact Checklist
+
+The plan should produce these concrete artifacts.
+
+Metrics and tables:
+
+- `20plate_split_aware_results_summary.md`
+- `20plate_split_aware_summary_long.csv`
+- `20plate_frozen_normalization_ablation.csv`
+- `20plate_loss_ablation.csv`
+- `20plate_trained_plus_correction.csv`
+
+Figures:
+
+- dataset composition figure;
+- frozen normalization ablation figure;
+- loss ablation figure;
+- final replicate retrieval comparison figure;
+- final cross-modality comparison figure.
+
+Text:
+
+- final methods paragraph for dataset and splits;
+- final methods paragraph for metrics;
+- final methods paragraph for normalization vs training;
+- final results paragraph for frozen baselines;
+- final results paragraph for projection heads;
+- final discussion paragraph for limitations and supervision caveats.
+
+Done condition:
+
+- all required tables exist and are generated from reproducible scripts;
+- all final figures exist and match the numbers in the tables;
+- `st/log.md` records the final results and interpretation;
+- the paper outline can be filled from the produced tables and figures without changing the benchmark scope.
 
 ## Success Criteria
 

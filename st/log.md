@@ -1166,3 +1166,16 @@ The main comparison logic is now:
 2. frozen + normalization;
 3. training with different losses;
 4. training + best correction, especially negcon correction if it improves held-out metrics.
+
+## 2026-05-28: Experiment Plan Promoted To Project Goal
+
+I updated `st/experiment_plan.md` so the current plan is also the project execution goal. The plan is now considered complete only when we have:
+
+- fixed 20-plate split-aware reporting;
+- frozen normalization/batch-correction ablations;
+- projection-head loss ablations;
+- trained-head plus correction comparison;
+- final figures and tables;
+- written interpretation separating label-free, sample-supervised, and bio-target-supervised results.
+
+This should prevent uncontrolled scope expansion. Optional experiments are still allowed, but only after the required split-aware tables, focused ablation matrix, and thesis figures are done.
