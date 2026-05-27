@@ -1,0 +1,31 @@
+condition,metric,run,run_label,mean_ap,n_queries
+A549_compound,replicate_retrieval,frozen_B_plate_zscore,Frozen DINOv2-B/14 + plate z-score,0.3110958447288482,1280
+A549_compound,replicate_retrieval,sample_proxy,Sample Proxy-CE head,0.4650465124981022,1280
+A549_compound,replicate_retrieval,bio_target_proxy,Bio-target Proxy-CE head,0.398666722628413,1280
+U2OS_compound,replicate_retrieval,frozen_B_plate_zscore,Frozen DINOv2-B/14 + plate z-score,0.2151198507226736,1280
+U2OS_compound,replicate_retrieval,sample_proxy,Sample Proxy-CE head,0.4195265517242932,1280
+U2OS_compound,replicate_retrieval,bio_target_proxy,Bio-target Proxy-CE head,0.3340057053901167,1280
+A549_crispr,replicate_retrieval,frozen_B_plate_zscore,Frozen DINOv2-B/14 + plate z-score,0.0446735123243585,1280
+A549_crispr,replicate_retrieval,sample_proxy,Sample Proxy-CE head,0.2126050583582614,1280
+A549_crispr,replicate_retrieval,bio_target_proxy,Bio-target Proxy-CE head,0.169131213578281,1280
+U2OS_crispr,replicate_retrieval,frozen_B_plate_zscore,Frozen DINOv2-B/14 + plate z-score,0.0644587448822796,1280
+U2OS_crispr,replicate_retrieval,sample_proxy,Sample Proxy-CE head,0.2468193910688731,1280
+U2OS_crispr,replicate_retrieval,bio_target_proxy,Bio-target Proxy-CE head,0.188571020227978,1280
+A549_orf,replicate_retrieval,frozen_B_plate_zscore,Frozen DINOv2-B/14 + plate z-score,0.0727646801628394,640
+A549_orf,replicate_retrieval,sample_proxy,Sample Proxy-CE head,0.0728743724771748,640
+A549_orf,replicate_retrieval,bio_target_proxy,Bio-target Proxy-CE head,0.0567288701649163,640
+U2OS_orf,replicate_retrieval,frozen_B_plate_zscore,Frozen DINOv2-B/14 + plate z-score,0.1491120107656519,640
+U2OS_orf,replicate_retrieval,sample_proxy,Sample Proxy-CE head,0.1634247973574134,640
+U2OS_orf,replicate_retrieval,bio_target_proxy,Bio-target Proxy-CE head,0.1140258510883183,640
+A549_compound_to_crispr,cross_modality_matching,frozen_B_plate_zscore,Frozen DINOv2-B/14 + plate z-score,0.0347482689152412,611
+A549_compound_to_crispr,cross_modality_matching,sample_proxy,Sample Proxy-CE head,0.0311309596923987,611
+A549_compound_to_crispr,cross_modality_matching,bio_target_proxy,Bio-target Proxy-CE head,0.8255773175749779,611
+A549_compound_to_orf,cross_modality_matching,frozen_B_plate_zscore,Frozen DINOv2-B/14 + plate z-score,0.0356723691471382,466
+A549_compound_to_orf,cross_modality_matching,sample_proxy,Sample Proxy-CE head,0.0324215540985868,466
+A549_compound_to_orf,cross_modality_matching,bio_target_proxy,Bio-target Proxy-CE head,0.8334982338089023,466
+U2OS_compound_to_crispr,cross_modality_matching,frozen_B_plate_zscore,Frozen DINOv2-B/14 + plate z-score,0.0319399706149472,611
+U2OS_compound_to_crispr,cross_modality_matching,sample_proxy,Sample Proxy-CE head,0.0290390303980546,611
+U2OS_compound_to_crispr,cross_modality_matching,bio_target_proxy,Bio-target Proxy-CE head,0.8066659996599217,611
+U2OS_compound_to_orf,cross_modality_matching,frozen_B_plate_zscore,Frozen DINOv2-B/14 + plate z-score,0.0427777094575663,466
+U2OS_compound_to_orf,cross_modality_matching,sample_proxy,Sample Proxy-CE head,0.0279119078133315,466
+U2OS_compound_to_orf,cross_modality_matching,bio_target_proxy,Bio-target Proxy-CE head,0.8312001009299508,466

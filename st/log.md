@@ -1043,3 +1043,80 @@ Restore status:
 - all 20 raw image plate directories are present;
 - raw image storage is about 775GB and `st/outputs` is about 1.4GB;
 - DINOv2-B extraction is continuing from the already-computed feature shards.
+
+## 2026-05-28: 20-Plate Frozen Multimodal Results
+
+The full 20-plate multimodal benchmark completed for DINOv2-S/14 and DINOv2-B/14. I pulled the small result tables back to the local Mac:
+
+- `st/reports/experiment_tables/20plate_multimodal_results_summary.md`
+- `st/reports/experiment_tables/20plate_multimodal_summary_long.csv`
+- `st/reports/experiment_tables/20plate_retrieval_summary.csv`
+- `st/reports/experiment_tables/20plate_within_modality_summary.csv`
+- `st/reports/experiment_tables/20plate_cross_modality_summary.csv`
+
+Storage and reproducibility status:
+
+- all 20 raw image plate directories are present on RunPod;
+- each plate has 17,280 TIFFs;
+- raw image storage is about 775GB;
+- `st/outputs` is about 1.7GB.
+
+Key frozen-feature findings:
+
+| Setting | A549 compound replicate AP | U2OS compound replicate AP | Best U2OS ORF replicate AP | Best U2OS compound-to-ORF AP |
+| --- | ---: | ---: | ---: | ---: |
+| DINOv2-S/14 + plate z-score | 0.3114 | 0.2077 | 0.1358 | 0.0399 |
+| DINOv2-S/14 + negcon z-score | 0.2895 | 0.1848 | 0.1380 | 0.0394 |
+| DINOv2-B/14 + plate z-score | 0.3111 | 0.2151 | 0.1491 | 0.0428 |
+| DINOv2-B/14 + negcon z-score | 0.2929 | 0.1926 | 0.1486 | 0.0399 |
+
+Interpretation:
+
+- Compound replicate retrieval is clearly measurable and strongest in A549.
+- CRISPR and ORF retrieval are much harder than compound retrieval, which makes the expanded benchmark more informative than the earlier 8-plate compound-only setting.
+- DINOv2-B gives modest gains over DINOv2-S on several U2OS ORF/cross-modality metrics, but the difference is not large enough to make backbone scaling the main story.
+- Cross-modality AP remains low, which is biologically plausible because it asks whether compound target annotations align with gene perturbation morphology across different perturbation mechanisms. This is a hard, thesis-worthy challenge rather than a saturated metric.
+
+Next experiment:
+
+- train a small projection head on the 20-plate frozen features;
+- run a standard sample-level Proxy-CE head for replicate retrieval;
+- run a bio-target Proxy-CE head using compound target genes and ORF/CRISPR genes as labels, aimed specifically at cross-modality matching.
+
+## 2026-05-28: 20-Plate Projection-Head Experiments
+
+I extended `st/scripts/train_feature_head.py` with explicit label modes:
+
+- `sample`: exact perturbation/sample identifiers, matching the earlier 8-plate Proxy-CE setup.
+- `bio_target`: compound target genes for compound wells and perturbation genes for ORF/CRISPR wells.
+
+I then ran two DINOv2-B/14 projection-head experiments on the 20-plate feature table:
+
+- sample Proxy-CE, trained on plate-z-scored frozen features;
+- bio-target Proxy-CE, trained on shared target/gene labels.
+
+The summarized report is:
+
+- `st/reports/experiment_tables/20plate_projection_head_results_summary.md`
+- `st/reports/experiment_tables/20plate_projection_head_key_metrics.csv`
+- `st/reports/experiment_tables/20plate_projection_head_summary_long.csv`
+
+Key result table:
+
+| Condition | Metric | Frozen B + plate z-score | Sample Proxy-CE | Bio-target Proxy-CE |
+| --- | --- | ---: | ---: | ---: |
+| A549 compound | replicate AP | 0.3111 | 0.4650 | 0.3987 |
+| U2OS compound | replicate AP | 0.2151 | 0.4195 | 0.3340 |
+| A549 CRISPR | replicate AP | 0.0447 | 0.2126 | 0.1691 |
+| U2OS CRISPR | replicate AP | 0.0645 | 0.2468 | 0.1886 |
+| A549 compound -> CRISPR | cross-modality AP | 0.0347 | 0.0311 | 0.8256 |
+| A549 compound -> ORF | cross-modality AP | 0.0357 | 0.0324 | 0.8335 |
+| U2OS compound -> CRISPR | cross-modality AP | 0.0319 | 0.0290 | 0.8067 |
+| U2OS compound -> ORF | cross-modality AP | 0.0428 | 0.0279 | 0.8312 |
+
+Interpretation:
+
+- Sample Proxy-CE is a strong perturbation-retrieval adaptation: it substantially improves compound and CRISPR replicate AP.
+- Sample Proxy-CE does not improve cross-modality matching, which shows that memorizing perturbation/sample identity is not sufficient for compound-to-gene alignment.
+- Bio-target Proxy-CE is an annotation-supervised upper bound. It directly trains on target/gene labels and therefore strongly improves cross-modality AP. This should be framed separately from label-free/frozen baselines.
+- The contrast between the two heads is useful for the thesis: morphology has enough signal to retrieve repeated perturbations, while cross-modality alignment needs biological target supervision or a more explicit alignment objective.

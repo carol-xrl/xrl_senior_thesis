@@ -207,6 +207,31 @@ def train_epoch(
     return float(np.mean(losses)) if losses else float("nan")
 
 
+def add_training_label(df: pd.DataFrame, label_mode: str) -> pd.DataFrame:
+    """Attach the supervised label used by the projection-head objective."""
+    output = df.copy()
+    if label_mode == "sample":
+        output["Metadata_training_label"] = output["Metadata_broad_sample"].astype(str)
+    elif label_mode == "bio_target":
+        if "Metadata_modality" not in output.columns:
+            raise ValueError("bio_target label mode requires Metadata_modality")
+        compound_target = output.get("Metadata_target", pd.Series(index=output.index, dtype=object))
+        gene = output.get("Metadata_gene", pd.Series(index=output.index, dtype=object))
+        output["Metadata_training_label"] = np.where(
+            output["Metadata_modality"].eq("compound"),
+            compound_target,
+            gene,
+        )
+        output["Metadata_training_label"] = output["Metadata_training_label"].astype("string").str.strip().str.upper()
+        output.loc[
+            output["Metadata_training_label"].isna() | output["Metadata_training_label"].isin(["", "NAN", "NONE"]),
+            "Metadata_training_label",
+        ] = pd.NA
+    else:
+        raise ValueError(f"Unknown label mode: {label_mode}")
+    return output
+
+
 def write_final_outputs(
     *,
     model: ProjectionHead,
@@ -245,6 +270,13 @@ def main() -> None:
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--prefix", required=True)
     parser.add_argument("--loss", choices=["supcon", "triplet", "proxy_ce"], required=True)
+    parser.add_argument(
+        "--label-mode",
+        choices=["sample", "bio_target"],
+        default="sample",
+        help="Supervised label definition: sample perturbation id, or shared biological target/gene label.",
+    )
+    parser.add_argument("--min-label-count", type=int, default=1, help="Drop training labels with fewer examples.")
     parser.add_argument("--input-transform", default="plate_zscore_l2")
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=512)
@@ -273,9 +305,15 @@ def main() -> None:
     feat_cols = feature_columns(base_df)
 
     train_df = base_df[(base_df["Metadata_split"] == "train") & (base_df["Metadata_control_type"] != "negcon")].copy()
+    train_df = add_training_label(train_df, args.label_mode)
+    train_df = train_df[train_df["Metadata_training_label"].notna()].copy()
+    if args.min_label_count > 1:
+        counts = train_df["Metadata_training_label"].value_counts()
+        keep = set(counts[counts >= args.min_label_count].index)
+        train_df = train_df[train_df["Metadata_training_label"].isin(keep)].copy()
     if train_df.empty:
         raise SystemExit("No train treatment rows found")
-    label_codes, label_names = pd.factorize(train_df["Metadata_broad_sample"], sort=True)
+    label_codes, label_names = pd.factorize(train_df["Metadata_training_label"], sort=True)
 
     device = torch.device(args.device if args.device == "cuda" and torch.cuda.is_available() else "cpu")
     train_x = torch.from_numpy(train_df[feat_cols].to_numpy(dtype=np.float32)).to(device)
@@ -355,4 +393,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
