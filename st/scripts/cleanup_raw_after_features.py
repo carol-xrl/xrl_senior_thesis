@@ -25,6 +25,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--check-interval-seconds", type=int, default=120)
     parser.add_argument("--delete", action="store_true", help="Actually delete raw images. Without this flag, only log actions.")
+    parser.add_argument(
+        "--allow-raw-image-delete",
+        action="store_true",
+        help="Required together with --delete so raw image retention is not disabled accidentally.",
+    )
     parser.add_argument("--once", action="store_true", help="Run one scan and exit.")
     return parser.parse_args()
 
@@ -44,6 +49,8 @@ def features_ready(feature_root: Path, prefixes: list[str], plate: str) -> bool:
 
 def main() -> None:
     args = parse_args()
+    if args.delete and not args.allow_raw_image_delete:
+        raise SystemExit("--delete requires --allow-raw-image-delete")
     manifest = pd.read_csv(args.manifest)
     plates = manifest["Metadata_Plate"].drop_duplicates().astype(str).tolist()
     image_root = Path(args.image_root)

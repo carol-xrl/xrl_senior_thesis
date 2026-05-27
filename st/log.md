@@ -1017,3 +1017,22 @@ I launched the guarded cleanup watcher on RunPod:
 - deletion condition: delete a raw plate directory only after `dinov2_vitb14_multimodal_short_20plate_<plate>.csv.done` exists.
 
 At launch time, DINOv2-S had completed 18/20 plate-level feature files and DINOv2-B had not started yet, so no raw images were deleted immediately.
+
+## 2026-05-28: Revised Storage Policy - Keep Raw Images
+
+The desired policy is to keep downloaded raw image plates on the RunPod volume and only remove intermediate artifacts. I stopped the raw cleanup watcher (`st_cleanup_raw_after_b`) and started restoring the raw plates that had already been removed:
+
+- `BR00116991`
+- `BR00116992`
+- `BR00116995`
+- `BR00117024`
+
+The restore job is running in tmux session `st_restore_raw_images` using the resolved manifest. DINOv2-B feature extraction can continue because it had already extracted those early plates before the restore began.
+
+I also hardened `st/scripts/cleanup_raw_after_features.py`: raw deletion now requires both `--delete` and `--allow-raw-image-delete`, so accidental raw-image cleanup cannot be launched with a single flag.
+
+Updated next-step policy:
+
+- keep all 20 raw image plate directories once restored;
+- let DINOv2-B finish and run the 20-plate multimodal evaluation;
+- after combined S/B feature CSVs and metrics exist, only clean true intermediates such as verbose download logs and plate-level temporary feature shards.
