@@ -919,3 +919,29 @@ Interpretation:
 
 - Proxy-CE on DINOv2-L gives the best 8-plate head result so far for held-out replicate retrieval.
 - The gain over DINOv2-B Proxy-CE is small, so the stronger conclusion remains that supervised projection and plate normalization matter more than backbone scaling alone.
+
+## 2026-05-28: 8-Plate Result Tables and Figures
+
+I added an automated summary script for the completed 8-plate experiments:
+
+- script: `st/scripts/summarize_8plate_results.py`
+- report: `st/reports/experiment_tables/8plate_results_summary.md`
+- tables:
+  - `st/reports/experiment_tables/8plate_frozen_backbones.csv`
+  - `st/reports/experiment_tables/8plate_normalization_ablation.csv`
+  - `st/reports/experiment_tables/8plate_projection_head_ablation.csv`
+- figures:
+  - `st/reports/experiment_tables/figures/8plate_normalization_ablation.png`
+  - `st/reports/experiment_tables/figures/8plate_projection_head_ablation.png`
+
+This makes the current 8-plate story reproducible from output CSVs instead of manually copying numbers. The main table now clearly separates:
+
+- frozen raw encoder performance,
+- normalization-only tricks,
+- supervised projection-head loss ablations.
+
+Current best 8-plate result:
+
+| Model | Loss | Transform | Best val replicate AP | Test replicate AP | Test negcon AP | Target AP |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| DINOv2-L/14 | Proxy-CE | plate_zscore_l2 | 0.3113 | 0.3199 | 0.4346 | 0.0812 |
