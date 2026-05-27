@@ -414,3 +414,43 @@ Created Codex skill:
 - `runpod-st-experiments`
 - Location: `/Users/carolxrl/.codex/skills/runpod-st-experiments`
 - Validation: passed
+
+## 2026-05-27: Remote Smoke and Pilot Download
+
+The GitHub repository was made public, so the RunPod pod can now sync code through git.
+
+Remote setup:
+
+- Cloned branch `st` to `/workspace/xrl_senior_thesis_run`.
+- Verified commit `c306cf7`.
+- Installed minimal runtime packages missing from the container: `pandas`, `matplotlib`, `awscli`, and `tmux`.
+- Confirmed PyTorch CUDA is available on the L40S pod.
+
+Remote smoke benchmark passed:
+
+- Metadata rows: 1536 wells from 4 compound U2OS 48h plates.
+- Treatment wells: 1280.
+- Negative-control wells: 256.
+- Synthetic replicate retrieval mean AP: 0.979957.
+- Synthetic negative-control challenge mean AP: 0.996050.
+- Synthetic target retrieval mean AP: 0.106514.
+
+Pilot image download:
+
+- Resolved all 4 S3 plate directories from Cell Painting Gallery.
+- Downloaded A01/A02 only for the 4 plates.
+- Downloaded 360 TIFF images, 5 fluorescent channels, about 772MB total.
+- This validates the path resolver, filename filters, and RunPod download throughput.
+
+Implementation update:
+
+- Added `st/scripts/extract_features.py`.
+- Added image loading/preprocessing utilities in `st/src/st_benchmark/imaging.py`.
+- Added baseline encoders in `st/src/st_benchmark/encoders.py`.
+- Current supported feature baselines are `intensity` and batched `dinov2`.
+
+Reasoning:
+
+- The `intensity` baseline is a fast sanity baseline. It should not be the main result, but it tells us whether metadata alignment, image loading, and metric evaluation are functional.
+- Batched DINOv2 is the first meaningful neural baseline because it is open-source, stable, strong on morphology-like visual representations, and feasible on one L40S.
+- The pilot uses only A01/A02 because it exercises all 4 plates while keeping download and extraction time small.
