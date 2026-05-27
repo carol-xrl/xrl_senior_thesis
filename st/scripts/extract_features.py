@@ -17,7 +17,7 @@ sys.path.insert(0, str(ST_DIR / "src"))
 
 from st_benchmark.encoders import build_encoder
 from st_benchmark.imaging import discover_sites, find_plate_image_dir, load_site, normalize_channels, resize_chw
-from st_benchmark.metadata import build_subset_metadata, load_config
+from st_benchmark.metadata import build_subset_metadata, load_config, selected_plates
 
 
 def parse_wells(values: list[str] | None) -> set[str] | None:
@@ -112,7 +112,7 @@ def main() -> None:
     repo_root = Path(args.repo_root)
     config = load_config(args.config)
     metadata = build_subset_metadata(config, repo_root)
-    plates = args.plates or list(config["subset"]["plates"])
+    plates = args.plates or selected_plates(config)
     metadata = metadata[metadata["Metadata_Plate"].isin(plates)].copy()
     wells_filter = parse_wells(args.wells)
     allowed_wells = metadata_wells_by_plate(metadata, wells_filter)
@@ -125,7 +125,7 @@ def main() -> None:
         plate_meta = metadata[metadata["Metadata_Plate"] == plate]
         if plate_meta.empty:
             continue
-        batch = str(plate_meta["Batch"].iloc[0])
+        batch = str(plate_meta["Metadata_Batch"].iloc[0])
         frame = extract_plate(
             encoder=encoder,
             plate=str(plate),
