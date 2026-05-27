@@ -700,3 +700,19 @@ Interpretation:
 - Target AP improves only modestly. This is expected because the training labels optimize compound identity, not mechanism or target overlap.
 - The triplet run is weaker and shows a near-collapsed representation in artifact summaries, so it should be treated as a negative result rather than a candidate final method.
 - Because the same compound occupies the same well position across plates, these supervised runs can still benefit from well-position confounding. The paper should frame this as weakly supervised perturbation adaptation and keep artifact sensitivity in the main results table.
+
+## 2026-05-27: Fair Frozen Split Metrics for 8-Plate Normalization
+
+I added `--input-transform` support to the split-aware evaluator and reran frozen DINOv2-S/14 split/cross-time retrieval for the strongest normalization variants.
+
+| Frozen variant | Test replicate AP | Test negcon AP | 24h -> 48h replicate AP | 48h -> 24h replicate AP |
+| --- | ---: | ---: | ---: | ---: |
+| raw | 0.1351 | 0.2663 | 0.0670 | 0.0892 |
+| plate_zscore_l2 | 0.1577 | 0.3472 | 0.1200 | 0.1041 |
+| negcon_zscore_l2 | 0.1318 | 0.3510 | 0.1102 | 0.0799 |
+
+Interpretation:
+
+- Plate z-score is the best frozen correction for held-out replicate retrieval and substantially improves 24h -> 48h matching.
+- Negcon z-score is strongest for the negative-control challenge but does not improve held-out replicate retrieval.
+- The best trained heads still roughly double test replicate AP versus the best frozen normalized baseline, so the main training result is not explained by normalization alone.
