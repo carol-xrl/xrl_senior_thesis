@@ -956,3 +956,20 @@ Interpretation:
 
 - The best 8-plate trained-head result is stable across seeds.
 - The seed variation is much smaller than the gain over frozen raw features, so the improvement is not a random-seed artifact.
+
+## 2026-05-28: Incremental 20-Plate Multimodal Queue
+
+The 20-plate multimodal download is still active and the GPU is idle while waiting for the remaining plates. I added an incremental runner:
+
+- script: `st/scripts/run_incremental_multimodal.sh`
+- behavior: as soon as one plate reaches 17,280 fluorescent TIFFs, extract its DINOv2 feature file immediately.
+- output layout: one feature CSV per `(model, plate)` under `st/outputs/features/multimodal_short_20plate_by_plate/`.
+- finalization: after all 20 plate-level feature files exist, combine them into the standard full feature table and run multimodal evaluation under `raw_l2`, `plate_zscore_l2`, and `negcon_zscore_l2`.
+
+Reasoning:
+
+- The previous runner was correct but conservative: it waited for all 20 plates before using the GPU.
+- The new queue lets downloading and GPU extraction overlap, which is better for the rented L40S.
+- Plate-level files make the run resumable: if a session dies, completed plates are not recomputed.
+
+This does not change the benchmark definition. It only changes execution scheduling.
