@@ -53,13 +53,15 @@ After renting a GPU server and pulling branch `st`, first resolve the S3 image l
 python st/scripts/prepare_download_manifest.py \
   --config st/configs/subset_u2os_compound_4plate.yaml \
   --repo-root . \
-  --image-root /data/cpjump1/images \
+  --image-root /workspace/data/cpjump1/images \
   --resolve-s3 \
   --wells A01 A02 \
   --dryrun
 ```
 
 Remove `--dryrun` for the tiny pilot download. Remove `--wells A01 A02` for the full fluorescent-channel subset download.
+
+On the current RunPod pod, use `/workspace/data/cpjump1/images` for full downloads. The `/data` path is only a small container overlay and is not large enough for full plates.
 
 After an encoder writes a feature table with columns `Metadata_Plate`, `Metadata_Well`, and `feature_*`, evaluate it:
 

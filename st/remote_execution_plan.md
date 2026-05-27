@@ -127,6 +127,21 @@ Recommended layout on the GPU server:
 
 The exact `/data` path can change depending on the rented machine. The important rule is that raw images and heavyweight outputs live outside git.
 
+For the current RunPod pod, the large mounted storage is `/workspace`, while `/` and `/data` are only a 50GB container overlay. Use this layout instead:
+
+```text
+/workspace/xrl_senior_thesis_run/
+  st/
+
+/workspace/data/cpjump1/
+  images/
+  features/
+  checkpoints/
+  caches/
+```
+
+The full 4-plate fluorescent subset is expected to be about 69,120 TIFFs and roughly 130-160GB, so it fits `/workspace` but not `/data`.
+
 ## Tmux Usage
 
 Use separate tmux sessions for long jobs:
@@ -159,7 +174,7 @@ First remote pilot sequence:
 ```bash
 git pull --ff-only origin st
 python st/scripts/prepare_download_manifest.py --repo-root . --resolve-s3 --wells A01 A02 --dryrun
-python st/scripts/prepare_download_manifest.py --repo-root . --resolve-s3 --wells A01 A02
+python st/scripts/prepare_download_manifest.py --repo-root . --image-root /workspace/data/cpjump1/images --resolve-s3 --wells A01 A02
 ```
 
 Only after the tiny pilot download is verified should we remove `--wells A01 A02` for full plate download.
