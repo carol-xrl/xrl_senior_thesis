@@ -1,0 +1,78 @@
+name: subset_multimodal_short_20plate
+
+paths:
+  experiment_metadata: benchmark/output/experiment-metadata.tsv
+  compound_annotations: benchmark/input/JUMP-Target-1_compound_metadata_additional_annotations.tsv
+  annotations:
+    compound: benchmark/input/JUMP-Target-1_compound_metadata_additional_annotations.tsv
+    orf: metadata/external_metadata/JUMP-Target-1_orf_metadata.tsv
+    crispr: metadata/external_metadata/JUMP-Target-1_crispr_metadata.tsv
+  platemaps:
+    compound: metadata/platemaps/2020_11_04_CPJUMP1/platemap/JUMP-Target-1_compound_platemap.txt
+    orf: metadata/platemaps/2020_11_04_CPJUMP1/platemap/JUMP-Target-1_orf_platemap.txt
+    crispr: metadata/platemaps/2020_11_04_CPJUMP1/platemap/JUMP-Target-1_crispr_platemap.txt
+  metadata_output: st/data/metadata/subset_multimodal_short_20plate_well_metadata.csv
+  split_output: st/data/splits/subset_multimodal_short_20plate_splits.csv
+  download_manifest_output: st/data/metadata/subset_multimodal_short_20plate_download_manifest.csv
+  download_commands_output: st/outputs/logs/subset_multimodal_short_20plate_download_commands.sh
+
+subset:
+  batch: 2020_11_04_CPJUMP1
+  perturbation: [compound, orf, crispr]
+  cell_type: [A549, U2OS]
+  time: [24, 48, 96]
+  density: 100
+  antibiotics: absent
+  cell_line: [Parental, Cas9]
+  plates:
+    train:
+      - BR00116991
+      - BR00116992
+      - BR00116995
+      - BR00117024
+      - BR00117020
+      - BR00117022
+      - BR00118041
+      - BR00118042
+      - BR00118045
+      - BR00118046
+    val:
+      - BR00116993
+      - BR00117025
+      - BR00118043
+      - BR00118047
+    test:
+      - BR00116994
+      - BR00117026
+      - BR00117021
+      - BR00117023
+      - BR00118044
+      - BR00118048
+
+images:
+  s3_base: s3://cellpainting-gallery/cpg0000-jump-pilot/source_4/images
+  remote_image_root: /workspace/data/cpjump1/images
+  fluorescent_channels: [1, 2, 3, 4, 5]
+  channel_names:
+    1: AGP
+    2: Mito
+    3: RNA
+    4: ER
+    5: DNA
+  default_sites_per_well: 9
+  raw_plate_size_estimate_gb_all_channels: 64
+  raw_plate_size_estimate_gb_fluorescent_only: 40
+
+metrics:
+  min_positive_count: 1
+  bootstrap_iterations: 1000
+  random_seed: 42
+
+smoke:
+  synthetic_feature_dim: 64
+  random_seed: 42
+  compound_signal: 2.0
+  target_signal: 0.6
+  plate_signal: 0.35
+  well_position_signal: 0.15
+  noise: 0.25

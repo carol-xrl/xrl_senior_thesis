@@ -716,3 +716,124 @@ Interpretation:
 - Plate z-score is the best frozen correction for held-out replicate retrieval and substantially improves 24h -> 48h matching.
 - Negcon z-score is strongest for the negative-control challenge but does not improve held-out replicate retrieval.
 - The best trained heads still roughly double test replicate AP versus the best frozen normalized baseline, so the main training result is not explained by normalization alone.
+
+## 2026-05-28: Pivot Toward U2OS Multimodal-Short Extension
+
+After checking storage and the original CPJUMP1 benchmark design, I prepared a more modality-focused extension instead of immediately expanding to A549 compound plates. This is better aligned with the original benchmark because it tests three perturbation modalities in the same cell type:
+
+| Modality | CPJUMP1 short time | U2OS plates |
+| --- | ---: | --- |
+| compound | 24h | `BR00116995`, `BR00117024`, `BR00117025`, `BR00117026` |
+| ORF | 48h | `BR00117022`, `BR00117023` |
+| CRISPR | 96h | `BR00118045`, `BR00118046`, `BR00118047`, `BR00118048` |
+
+I added `st/configs/subset_u2os_multimodal_short_10plate.yaml` and extended metadata construction so each plate can use the correct compound/ORF/CRISPR platemap and annotation table.
+
+Metadata summary:
+
+| Name | Value |
+| --- | ---: |
+| plates | 10 |
+| usable wells | 3,816 |
+| treatment wells | 3,200 |
+| negative-control wells | 616 |
+| unique perturbation IDs | 817 |
+| compound target-annotated wells | 1,280 |
+| gene-annotated wells | 2,040 |
+
+Interpretation:
+
+- This extension is more scientifically useful than only adding A549 compound plates if the goal is to show modality generalization.
+- The short labels are modality-specific in the original benchmark: compound 24h, ORF 48h, CRISPR 96h. They are not the same absolute treatment time.
+- The next implementation requirement is cross-modality matching: compound target lists must be compared to ORF/CRISPR gene targets, not only same-perturbation replicate retrieval.
+
+## 2026-05-28: Final 20-Plate Multimodal-Short Benchmark Design
+
+After discussing whether to double the subset, I expanded the multimodal-short benchmark to both A549 and U2OS instead of making a compound-only 16-plate benchmark. This is the stronger thesis design because it tests both perturbation modality and cell-line robustness while staying inside one clean CPJUMP1 batch.
+
+Selected final extension:
+
+| Cell type | Modality | Short time | Plates |
+| --- | --- | ---: | --- |
+| A549 | compound | 24h | `BR00116991`, `BR00116992`, `BR00116993`, `BR00116994` |
+| U2OS | compound | 24h | `BR00116995`, `BR00117024`, `BR00117025`, `BR00117026` |
+| A549 | ORF | 48h | `BR00117020`, `BR00117021` |
+| U2OS | ORF | 48h | `BR00117022`, `BR00117023` |
+| A549 | CRISPR | 96h | `BR00118041`, `BR00118042`, `BR00118043`, `BR00118044` |
+| U2OS | CRISPR | 96h | `BR00118045`, `BR00118046`, `BR00118047`, `BR00118048` |
+
+Why not force a 4+4+4-per-cell design:
+
+- In the clean `2020_11_04_CPJUMP1` batch, ORF short has only two plates per cell line.
+- Adding more ORF plates from another batch/timepoint would introduce batch/acquisition confounding.
+- The 20-plate design keeps a clean batch and still includes both cell lines, three perturbation modalities, and cross-modality targets.
+
+Metadata summary:
+
+| Name | Value |
+| --- | ---: |
+| usable wells | 7,632 |
+| plates | 20 |
+| treatment wells | 6,400 |
+| negative-control wells | 1,232 |
+| unique perturbation IDs | 817 |
+| compound target-annotated wells | 2,560 |
+| gene-annotated wells | 4,080 |
+
+Benchmark metrics for this extension:
+
+1. Perturbation retrieval within each cell line and modality.
+2. Negative-control challenge within each cell line and modality.
+3. Within-modality matching for compound targets and CRISPR sister guides.
+4. Cross-modality matching from compounds to ORF/CRISPR gene perturbations within the same cell line.
+
+Important interpretation detail:
+
+- ORF within-modality matching is not reported as a positive main metric for this subset because each ORF gene has one construct. ORF still contributes to perturbation retrieval and compound-to-ORF cross-modality matching.
+- CRISPR is appropriate for within-modality gene matching because most genes have two guide reagents.
+
+Implementation update:
+
+- Added `st/configs/subset_multimodal_short_20plate.yaml`.
+- Extended metadata construction to load compound, ORF, and CRISPR platemaps/annotations per plate.
+- Added condition-aware multimodal evaluation so the 20-plate feature table is not evaluated as one mixed candidate pool.
+- Local synthetic smoke test passed for all planned multimodal metric tables.
+
+## 2026-05-28: 8-Plate DINOv2-B/14 Result
+
+I completed the stronger frozen DINOv2-B/14 baseline on the 8-plate U2OS compound 24h+48h benchmark.
+
+Key raw 8-plate results:
+
+| Metric | Mean AP | Median AP |
+| --- | ---: | ---: |
+| Replicate retrieval | 0.1360 | 0.0215 |
+| Negative-control challenge | 0.2613 | 0.0618 |
+| Target retrieval | 0.0736 | 0.0311 |
+
+Normalization ablation:
+
+| Variant | Replicate mean AP | Negcon mean AP | Target mean AP |
+| --- | ---: | ---: | ---: |
+| raw_l2 | 0.1360 | 0.2613 | 0.0737 |
+| global_zscore_l2 | 0.1516 | 0.3157 | 0.0799 |
+| plate_center_l2 | 0.1486 | 0.3244 | 0.0792 |
+| plate_zscore_l2 | 0.1627 | 0.3431 | 0.0806 |
+| negcon_center_l2 | 0.1385 | 0.3341 | 0.0753 |
+| negcon_zscore_l2 | 0.1418 | 0.3497 | 0.0746 |
+
+Split-aware raw metrics:
+
+| Scope | Replicate AP | Negcon AP |
+| --- | ---: | ---: |
+| held-out test plates | 0.1385 | 0.2583 |
+| within 24h | 0.2248 | - |
+| within 48h | 0.2750 | - |
+| 24h -> 48h | 0.0700 | - |
+| 48h -> 24h | 0.0922 | - |
+
+Interpretation:
+
+- DINOv2-B is only slightly stronger than DINOv2-S on raw replicate retrieval, but it improves target retrieval.
+- Plate z-score again gives the best replicate retrieval among cheap frozen-feature tricks.
+- The 8-plate task remains meaningfully harder than 4-plate 48h-only evaluation because cross-time retrieval is low.
