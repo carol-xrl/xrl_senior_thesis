@@ -2,242 +2,364 @@
 
 ## Working Title
 
-Low-cost biological representation learning for Cell Painting: a compact CPJUMP1 subset benchmark and encoder study
+A compact multimodal CPJUMP1 benchmark for Cell Painting representation learning
 
 ## Core Thesis
 
-High-content Cell Painting images contain perturbation-level biological signal, but common visual encoders are not optimized to recover that signal under realistic experimental constraints. We build a compact, reproducible CPJUMP1 subset benchmark that can be run in roughly 2.5 days and use it to compare generic vision encoders, cell morphology baselines, and lightweight self-supervised training strategies.
+Cell Painting images contain perturbation-level biological signal, but generic image encoders do not automatically align compound, ORF, and CRISPR perturbations by biological mechanism. A compact 20-plate CPJUMP1 benchmark can expose three levels of representation quality:
 
-The paper should not claim to build a full-scale foundation model. The stronger and more defensible claim is:
+1. whether frozen visual features retrieve exact perturbation replicates;
+2. whether lightweight supervised adaptation improves identity-level retrieval;
+3. whether explicit biological target/gene supervision is needed for cross-modality alignment.
 
-> A carefully designed 1-4 plate CPJUMP1 benchmark can reveal whether image representations preserve perturbation identity, target-level biology, and control separation; bio-aware preprocessing and training choices can improve these retrieval signals under limited compute.
+The paper should not claim to train a full biological foundation model. The defensible claim is:
 
-## Target Contribution
+> With a fixed 20-plate multimodal CPJUMP1 subset, frozen DINOv2 representations recover some perturbation structure, sample-supervised heads improve replicate retrieval, and target/gene-supervised heads reveal a strong upper bound for compound-to-gene morphological alignment.
 
-1. A compact CPJUMP1-subset benchmark with clear metrics, fixed splits, and reproducible scripts.
-2. A fair comparison of affordable encoders for Cell Painting images.
-3. A practical study of training choices: channel handling, augmentations, aggregation, normalization, and contrastive or self-supervised objectives.
-4. An analysis that explains when representations capture biology versus plate, well-position, or staining artifacts.
+## Contributions
+
+1. A reproducible 20-plate CPJUMP1 benchmark spanning compound, ORF, and CRISPR perturbations in A549 and U2OS.
+2. A metric suite covering replicate retrieval, negative-control challenge, within-modality matching, and cross-modality matching.
+3. A low-cost evaluation of DINOv2-S/14 and DINOv2-B/14 frozen features under normalization variants.
+4. A projection-head study separating perturbation identity supervision from biological target/gene supervision.
+5. A practical compute and storage workflow using RunPod while retaining raw images on the server.
 
 ## 1. Introduction
 
-High-content screening enables large-scale measurement of cellular responses to chemical and genetic perturbations. Cell Painting is especially useful because it captures rich morphology across multiple fluorescent channels. However, extracting biologically meaningful representations from these images remains difficult.
+High-content Cell Painting assays measure cellular morphology under many chemical and genetic perturbations. These images are promising for biological representation learning because morphology can reflect perturbation identity, pathway activity, and cellular state. However, learning representations that recover biology rather than plate effects, staining variation, or acquisition artifacts remains difficult.
 
-Generic encoders such as ImageNet ViTs, CLIP, and DINOv2 are visually powerful, but they are trained on natural images and may emphasize texture, intensity, or acquisition artifacts instead of perturbation effects. Classical CellProfiler features remain a strong morphology-aware baseline, while recent biological image models such as OpenPhenom suggest that domain-specific training can matter.
+Generic self-supervised vision models such as DINOv2 are powerful, but they are not trained to align compounds with genes or to respect high-content screening experimental structure. Conversely, full-scale domain-specific foundation model training is expensive. This thesis studies a practical middle ground: fixed public data, frozen foundation features, feature normalization, and lightweight projection heads.
 
-This work studies a practical question: given a modest budget, can we build and evaluate a useful bio-visual encoder on public HCS data?
+The introduction should motivate four questions:
 
-The introduction should end with three claims:
-
-1. We introduce a compact CPJUMP1-subset benchmark designed for fast iteration.
-2. We evaluate several visual representations under the same retrieval-style biological metrics.
-3. We identify training and preprocessing choices that improve perturbation-aware representations.
+1. Do frozen visual features retrieve repeated perturbations across plates?
+2. Are compound, ORF, and CRISPR perturbations equally easy?
+3. Does supervised perturbation identity training improve morphology representations?
+4. What kind of supervision is needed for compound-to-gene cross-modality matching?
 
 ## 2. Related Work
 
-This section should be short and focused.
+Keep this concise and targeted.
 
-- Cell Painting and high-content screening: morphology profiles, perturbation similarity, target matching.
-- Hand-engineered morphology representations: CellProfiler and pycytominer.
-- Generic visual foundation models: ImageNet, CLIP, DINOv2.
-- Biological image representation models: DeepProfiler, OpenPhenom, self-supervised microscopy models.
-- Benchmarking biological representation: replicate retrieval, matching, average precision, control separation.
+- Cell Painting and high-content screening morphology profiles.
+- The JUMP-Cell Painting / CPJUMP1 dataset.
+- Classical morphology features and CellProfiler.
+- Generic vision foundation models, especially self-supervised ViTs such as DINOv2.
+- Biological image representation learning and microscopy foundation models.
+- Biological benchmark metrics: replicate retrieval, mean average precision, control separation, target/gene matching.
 
-The goal is to position the paper as a practical benchmark and training study, not as a claim of beating every large model.
+Position the work as a benchmark and adaptation study, not as a new large model.
 
-## 3. CPJUMP1-Subset Benchmark
+## 3. Benchmark
 
-This is the main technical contribution.
+### 3.1 Dataset
 
-### 3.1 Dataset Subset
+Use CPJUMP1 batch `2020_11_04_CPJUMP1`.
 
-Use CPJUMP1, starting from one high-value subset:
+Main subset:
 
-- Batch: `2020_11_04_CPJUMP1`
-- Modality: compound
-- Cell type: U2OS
-- Time: 48h
-- Density: 100
-- Antibiotics: absent
-- Plates: `BR00117010`, `BR00117011`, `BR00117012`, `BR00117013`
+| Field | Value |
+| --- | --- |
+| Plates | 20 |
+| Cell types | A549, U2OS |
+| Modalities | compound, ORF, CRISPR |
+| Compound time | 24h |
+| ORF time | 48h |
+| CRISPR time | 96h |
+| Density | 100 |
+| Antibiotics | absent |
+| Channels | AGP, Mito, RNA, ER, DNA |
+| Total well rows | 7632 |
 
-These four plates are attractive because they share condition and plate map, giving repeated perturbations across plates. This supports retrieval metrics without requiring the full CPJUMP1 download.
+### 3.2 Plate Split
 
-### 3.2 Data Unit
+The split is plate-level.
 
-The benchmark should define three levels:
+Train plates:
 
-- Image channel: five fluorescent channels, excluding brightfield for the first version.
-- Site-level representation: encoder feature for each field of view.
-- Well-level representation: aggregation of site features, usually mean or median.
+- A549 compound: `BR00116991`, `BR00116992`
+- U2OS compound: `BR00116995`, `BR00117024`
+- A549 ORF: `BR00117020`
+- U2OS ORF: `BR00117022`
+- A549 CRISPR: `BR00118041`, `BR00118042`
+- U2OS CRISPR: `BR00118045`, `BR00118046`
 
-Primary reporting should use well-level representations, because CPJUMP1 benchmark metrics are well-level.
+Validation plates:
 
-### 3.3 Metrics
+- A549 compound: `BR00116993`
+- U2OS compound: `BR00117025`
+- A549 CRISPR: `BR00118043`
+- U2OS CRISPR: `BR00118047`
 
-The benchmark should contain four metrics:
+Test plates:
 
-1. Replicate retrieval mAP: wells with the same `Metadata_broad_sample` across plates should retrieve each other.
-2. Negcon challenge mAP: treatment wells should rank their true replicates above negative controls.
-3. Target retrieval mAP: compounds sharing the same annotated target or target list should be closer than unrelated compounds.
-4. Artifact sensitivity: measure whether feature similarity is explained by same plate or same well position rather than same perturbation.
+- A549 compound: `BR00116994`
+- U2OS compound: `BR00117026`
+- A549 ORF: `BR00117021`
+- U2OS ORF: `BR00117023`
+- A549 CRISPR: `BR00118044`
+- U2OS CRISPR: `BR00118048`
 
-The first two metrics are mandatory. The third depends on enough target annotations after filtering. The fourth is important for credibility.
+Use this language carefully:
 
-### 3.4 Splits
+- Frozen feature extraction sees all images but no labels.
+- Projection heads train only on train plates.
+- Validation plates select checkpoints.
+- Test plates are reserved for final split-aware reporting.
+- Current condition-level 20-plate tables aggregate all queries; final thesis should include explicit test-query tables.
 
-Default split:
+### 3.3 Data Units
 
-- Train: two plates.
-- Validation: one plate.
-- Test: one plate.
+Raw image:
 
-Evaluation should primarily report held-out plate performance. For baselines that do not train, all plates can be encoded, but metrics should still be computed using held-out queries where possible.
+- one TIFF channel for one site.
 
-### 3.5 Why This Benchmark Is Valid
+Site:
 
-The paper should explicitly defend the subset:
+- five fluorescent channels for one field of view.
 
-- It preserves biological replicate structure.
-- It is cheap enough to run repeatedly.
-- It has enough negative controls and compound annotations for retrieval analysis.
-- It exposes common failure modes: plate effects, well-position effects, and target ambiguity.
+Well:
+
+- mean aggregation of site-level encoder features.
+
+Perturbation:
+
+- used for labels and retrieval positives, but primary metrics are computed at well level.
+
+### 3.4 Metrics
+
+Replicate retrieval:
+
+- exact perturbation identity retrieval across plates;
+- metric: mean average precision.
+
+Negative-control challenge:
+
+- treatment wells should retrieve true replicates over negative controls;
+- metric: mean average precision.
+
+Within-modality matching:
+
+- compound target matching;
+- CRISPR gene/sister-guide matching;
+- ORF currently has no robust within-modality positive definition in this subset.
+
+Cross-modality matching:
+
+- compound -> CRISPR and compound -> ORF;
+- within the same cell line;
+- positives are shared compound target genes and perturbation genes.
+
+### 3.5 Why This Benchmark Is Reasonable
+
+Biological motivation:
+
+- Compound perturbations test chemical response morphology.
+- ORF perturbations test gene overexpression morphology.
+- CRISPR perturbations test gene knockout morphology.
+- A549 and U2OS test whether representations generalize across cell context.
+- Cross-modality matching asks whether different perturbation mechanisms that touch the same gene/target produce aligned morphology.
+
+Engineering motivation:
+
+- 20 plates fit within a 1TB RunPod volume with fluorescent channels only.
+- The benchmark can be run in a few days on one L40S.
+- The subset is much richer than an 8-plate compound-only benchmark without becoming full-dataset scale.
 
 ## 4. Methods
 
 ### 4.1 Preprocessing
 
-- Load TIFF images.
-- Use the five fluorescent channels: AGP, Mito, RNA, ER, DNA.
-- Normalize per channel with percentile clipping.
-- Resize to encoder input size.
-- Use either direct 5-channel models or two pseudo-RGB channel groups:
-  - Group A: AGP, Mito, DNA.
-  - Group B: RNA, ER, DNA.
+- Download only fluorescent channels 1-5.
+- Keep all raw images on RunPod.
+- Percentile-normalize each channel.
+- Resize to 224 x 224.
+- Form two pseudo-RGB groups:
+  - AGP, Mito, DNA
+  - RNA, ER, DNA
+- Encode both groups with DINOv2 and concatenate embeddings.
+- Average site embeddings into well features.
 
-### 4.2 Baselines
+### 4.2 Frozen Encoders
 
-The baseline table should include 4-5 rows if feasible:
+Primary frozen baselines:
 
-- CellProfiler features, as the morphology-aware classical baseline.
-- DINOv2, generic self-supervised natural-image ViT.
-- CLIP, generic vision-language representation.
-- OpenPhenom, biological image foundation model.
-- A small ImageNet ResNet or ViT, if setup time permits.
+- DINOv2-S/14
+- DINOv2-B/14
 
-### 4.3 Our Training Variants
+Normalization variants:
 
-Use one affordable backbone rather than many expensive training runs. The likely default is DINOv2/ViT or ResNet-style feature extractor with lightweight projection head.
+- `raw_l2`
+- `plate_zscore_l2`
+- `negcon_zscore_l2`
 
-Candidate variants:
+### 4.3 Projection Heads
 
-- SSL baseline: SimCLR-style contrastive loss across augmented views of the same site.
-- Well-aware positive pairs: different sites from the same well as positives.
-- Perturbation-aware weak positives: wells with the same compound across training plates as positives, if using labels is acceptable for one supervised contrastive variant.
-- Channel-aware augmentations: intensity jitter per channel, mild blur, crop, rotation/flip, but avoid augmentations that destroy morphology.
-- Plate normalization: compare raw feature aggregation vs plate-wise z-scoring or robust normalization.
+Use frozen well-level features and train a small MLP projection head.
 
-The paper should present these as ablations, not as a single opaque recipe.
+Sample Proxy-CE:
+
+- label: exact `Metadata_broad_sample`;
+- objective: improve perturbation identity / replicate retrieval;
+- interpretation: identity-supervised adaptation.
+
+Bio-target Proxy-CE:
+
+- compound label: compound target gene;
+- ORF/CRISPR label: perturbation gene;
+- objective: align perturbations by biological target/gene;
+- interpretation: annotation-supervised upper bound for cross-modality matching.
+
+Important framing:
+
+- Sample Proxy-CE and bio-target Proxy-CE answer different questions.
+- Bio-target Proxy-CE should not be presented as a label-free model.
+- Its value is to show that cross-modality alignment is possible when target/gene labels are made explicit.
 
 ## 5. Experiments
 
-### 5.1 Experimental Setup
+### 5.1 Dataset Summary
 
 Report:
 
-- Plates used.
-- Number of wells, sites, images, channels.
-- GPU type, runtime, storage, and approximate cost.
-- Encoders and feature dimensions.
-- Aggregation method.
-- All metric definitions.
+- 20 plates;
+- 7632 well-level rows;
+- 6400 treatment wells;
+- 1232 negative controls;
+- 817 unique perturbation IDs overall;
+- 306 compound IDs per cell line;
+- 305 CRISPR IDs per cell line;
+- 160 ORF IDs per cell line.
 
-### 5.2 Baseline Comparison
+### 5.2 Frozen Feature Baselines
 
-Main result table:
+Main table:
 
-| Method | Replicate mAP | Negcon challenge | Target mAP | Artifact score | Runtime |
-| --- | ---: | ---: | ---: | ---: | ---: |
+- rows: DINOv2-S/B and normalization variants;
+- columns: replicate retrieval, negative-control challenge, within-modality matching, cross-modality matching;
+- report separately by cell line and modality.
 
-This table is likely the main paper table.
+Key completed results:
 
-### 5.3 Training Ablations
+- DINOv2-B + plate z-score:
+  - A549 compound replicate AP: 0.3111
+  - U2OS compound replicate AP: 0.2151
+  - A549 compound -> CRISPR AP: 0.0347
+  - A549 compound -> ORF AP: 0.0357
+  - U2OS compound -> CRISPR AP: 0.0319
+  - U2OS compound -> ORF AP: 0.0428
 
-A second table should isolate method choices:
+### 5.3 Projection-Head Adaptation
 
-- Channel grouping.
-- Augmentations.
-- Loss function.
-- Site-to-well aggregation.
-- Plate normalization.
+Compare:
 
-### 5.4 Analysis
+| Method | Main expected effect |
+| --- | --- |
+| Frozen DINOv2-B + plate z-score | label-free baseline |
+| Sample Proxy-CE | improves exact perturbation retrieval |
+| Bio-target Proxy-CE | upper bound for cross-modality alignment |
 
-Include at least three analysis figures:
+Completed key results:
 
-1. UMAP or PCA colored by compound, plate, and control type.
-2. Replicate retrieval curve or per-compound mAP distribution.
-3. Artifact analysis: similarity by same perturbation, same plate, and same well position.
+| Condition | Metric | Frozen B + plate z-score | Sample Proxy-CE | Bio-target Proxy-CE |
+| --- | --- | ---: | ---: | ---: |
+| A549 compound | replicate AP | 0.3111 | 0.4650 | 0.3987 |
+| U2OS compound | replicate AP | 0.2151 | 0.4195 | 0.3340 |
+| A549 CRISPR | replicate AP | 0.0447 | 0.2126 | 0.1691 |
+| U2OS CRISPR | replicate AP | 0.0645 | 0.2468 | 0.1886 |
+| A549 compound -> CRISPR | cross-modality AP | 0.0347 | 0.0311 | 0.8256 |
+| A549 compound -> ORF | cross-modality AP | 0.0357 | 0.0324 | 0.8335 |
+| U2OS compound -> CRISPR | cross-modality AP | 0.0319 | 0.0290 | 0.8067 |
+| U2OS compound -> ORF | cross-modality AP | 0.0428 | 0.0279 | 0.8312 |
 
-Use generated or schematic figures only for conceptual diagrams. Experimental plots must come from real results.
+Interpretation:
 
-## 6. Discussion
+- Sample identity supervision improves replicate retrieval but not cross-modality.
+- Biological target/gene supervision strongly improves cross-modality.
+- This supports the thesis that cross-modality alignment is not simply solved by better perturbation identity clustering.
 
-Discuss:
+### 5.4 Split-Aware Evaluation
 
-- Why generic encoders may fail or succeed.
-- Whether biological pretrained models help.
-- Which tricks improve perturbation signal.
-- Why subset benchmark results should be interpreted cautiously.
-- How the benchmark can scale to more plates or genetic perturbations.
+This should be the next methodological cleanup before final writing.
 
-## 7. Conclusion
+Need to report:
 
-The conclusion should be concrete:
+- validation AP used for checkpoint selection;
+- test-query AP on held-out test plates;
+- condition-level all-query AP as a secondary descriptive table.
 
-We construct a low-cost CPJUMP1-subset benchmark for perturbation-aware representation learning, evaluate several accessible visual encoders, and identify lightweight training and normalization choices that improve biological retrieval under limited compute. This provides a practical stepping stone toward larger HCS foundation-model training.
+Purpose:
 
-## Figure And Table Plan
+- avoid overclaiming from all-query aggregate tables;
+- make training/test separation explicit;
+- make the projection-head experiments easier to defend.
 
-Figure 1: Overview schematic.
+## 6. Figures And Tables
 
-- CPJUMP1 subset.
-- Multi-channel image encoder.
-- Site-to-well aggregation.
-- Four retrieval/artifact metrics.
+Figure 1: Benchmark schematic.
 
-Figure 2: Benchmark data composition.
+- raw images -> pseudo-RGB groups -> DINOv2 encoder -> well-level features -> metric suite.
 
-- Plates, wells, controls, compounds, target annotation coverage.
+Figure 2: Dataset composition.
 
-Figure 3: Main result table or bar plot.
+- plates by split, cell line, modality, and time.
 
-- Baseline and trained variants across the four metrics.
+Figure 3: Frozen baseline result summary.
 
-Figure 4: Representation visualization.
+- DINOv2-S/B and normalization variants.
 
-- UMAP/PCA colored by perturbation, plate, and control.
+Figure 4: Projection-head comparison.
 
-Figure 5: Ablation analysis.
+- frozen B, sample Proxy-CE, bio-target Proxy-CE.
+- separate panels for replicate retrieval and cross-modality AP.
 
-- Loss and augmentation effects.
+Figure 5: Interpretation schematic.
 
-Table 1: Dataset subset summary.
+- sample labels cluster exact perturbations;
+- target/gene labels align compound with gene perturbations.
 
-Table 2: Baseline comparison.
+Table 1: 20-plate subset definition.
 
-Table 3: Ablation comparison.
+Table 2: frozen baseline metrics.
 
-Table 4: Compute and cost summary.
+Table 3: projection-head metrics.
 
-## Acceptance Bar For The Paper Draft
+Table 4: compute/storage summary.
 
-The paper is only credible if it includes:
+## 7. Discussion
 
-- A frozen subset definition.
-- A documented train/validation/test split.
-- At least four baselines or three baselines plus one trained variant.
-- At least four metrics, with artifact analysis included.
-- Runtime and cost accounting.
-- Failure analysis, not only positive results.
+Main points:
 
+- Frozen generic vision features are useful but incomplete for biological matching.
+- Compound perturbations are easier than genetic perturbations.
+- Cross-modality matching is difficult under frozen features and sample-supervised heads.
+- Target/gene supervision provides a strong upper bound, suggesting that explicit biological annotations are valuable.
+- The benchmark is compact enough for rapid iteration while still reflecting multimodal biological structure.
+
+Limitations:
+
+- 20 plates are still a subset of CPJUMP1.
+- Time differs by modality: compound 24h, ORF 48h, CRISPR 96h.
+- Bio-target Proxy-CE uses labels directly related to cross-modality evaluation, so it must be framed as an upper bound.
+- Final reporting should include split-aware test metrics.
+
+## 8. Conclusion
+
+This thesis builds a compact multimodal CPJUMP1 benchmark and shows that:
+
+1. frozen DINOv2 features recover meaningful perturbation structure;
+2. sample-level supervision improves replicate retrieval;
+3. target/gene supervision is needed to strongly align compound and genetic perturbation morphology;
+4. a 20-plate benchmark can support a credible low-cost study of biological representation learning.
+
+## Draft Acceptance Checklist
+
+The paper draft should include:
+
+- fixed 20-plate subset and plate-level split;
+- metric definitions;
+- frozen DINOv2-S/B baseline table;
+- projection-head table;
+- split-aware test-query table;
+- storage and compute details;
+- clear distinction between label-free baselines, sample-supervised heads, and target-supervised upper bounds.

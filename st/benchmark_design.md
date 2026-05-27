@@ -1,518 +1,287 @@
-# Benchmark Design And 2.5-Day Execution Plan
+# Benchmark Design
 
 ## Objective
 
-Build a compact CPJUMP1 benchmark that can be executed within 2.5 days, including data download, feature extraction, training, evaluation, plotting, and analysis.
+Build a compact but biologically meaningful CPJUMP1 benchmark that can be completed on one RunPod L40S while still testing more than compound-only replicate retrieval.
 
-The benchmark should answer:
+The current benchmark is the 20-plate multimodal subset, not the older 4-plate or 8-plate pilot.
 
-1. Do visual features retrieve biological replicates across plates?
-2. Do visual features separate treatments from negative controls?
-3. Do features recover target-level relationships among compounds?
-4. Are the measured signals biological, or are they dominated by plate/well artifacts?
+It should answer four questions:
 
-## Compute Constraint
+1. Do frozen image features retrieve exact perturbation replicates across plates?
+2. Do normalization choices improve biological signal rather than only treatment/control separation?
+3. Does light supervised adaptation improve replicate retrieval?
+4. Can compound perturbations be aligned with gene perturbations across modality?
 
-Budget target: about 100 USD.
+## Current Dataset
 
-Time target: 2.5 days end to end.
+Config:
 
-Practical implications:
+- `st/configs/subset_multimodal_short_20plate.yaml`
 
-- Do not start with the full CPJUMP1 dataset.
-- Prefer fluorescent channels only for the first pass.
-- Keep one frozen subset for all baselines.
-- Run feature extraction and training in `tmux`.
-- Save intermediate features aggressively so failed downstream experiments do not require re-encoding images.
-- Use smoke tests before launching any full run.
+Generated metadata:
 
-## Primary Dataset Subset
+- `st/data/metadata/subset_multimodal_short_20plate_well_metadata.csv`
+- `st/data/splits/subset_multimodal_short_20plate_splits.csv`
+- `st/data/metadata/subset_multimodal_short_20plate_download_manifest.csv`
 
-Primary subset: 4 replicate compound plates.
+Batch:
+
+- `2020_11_04_CPJUMP1`
+
+Scope:
 
 | Field | Value |
 | --- | --- |
-| Batch | `2020_11_04_CPJUMP1` |
-| Modality | compound |
-| Cell type | U2OS |
-| Time | 48h |
-| Density | 100 |
-| Antibiotics | absent |
-| Cell line | Parental |
-| Plates | `BR00117010`, `BR00117011`, `BR00117012`, `BR00117013` |
+| Plates | 20 |
+| Cell types | A549, U2OS |
+| Modalities | compound, ORF, CRISPR |
+| Compound time | 24h |
+| ORF time | 48h |
+| CRISPR time | 96h |
+| Channels | AGP, Mito, RNA, ER, DNA |
+| Well rows | 7632 |
+| Treatment wells | 6400 |
+| Negative-control wells | 1232 |
 
-Reason:
+Why this subset:
 
-- The four plates share the same experimental condition.
-- The compound plate map gives repeated compounds across plates.
-- This supports cross-plate replicate retrieval.
-- It is small enough to run under the budget, especially if we download only channels 1-5.
-- These plates already appear in the repo's example-image context and DeepProfiler subset plan, so they are familiar and defensible.
+- It covers chemical perturbation, gene overexpression, and gene knockout rather than only one modality.
+- It includes two cell contexts, so model behavior is not tied to U2OS only.
+- It keeps the modality-specific CPJUMP1 time points as part of the protocol. Time is not the main scientific variable here; modality is.
+- It fits inside a 1TB RunPod volume when we keep only fluorescent raw TIFFs and small derived outputs.
 
-## Fallback Subsets
+Important limitation:
 
-If storage, download, or GPU time becomes the bottleneck:
+- ORF has fewer plates in this selected condition than compound and CRISPR. The final design is therefore 8 compound plates, 8 CRISPR plates, and 4 ORF plates, rather than a symmetric 4+4+4 per cell-line layout.
 
-Fallback A: 2 plates.
+## Plate Split
 
-- `BR00117010`, `BR00117011`
-- Use for pipeline validation and preliminary results.
-- Supports replicate retrieval but has weaker statistics.
+The split is plate-level. This tests held-out plate/image generalization, not held-out perturbation-identity generalization.
 
-Fallback B: 1 plate plus site-level pseudo-replicates.
+| Split | Cell | Modality | Time | Plate(s) |
+| --- | --- | --- | ---: | --- |
+| train | A549 | compound | 24h | `BR00116991`, `BR00116992` |
+| train | U2OS | compound | 24h | `BR00116995`, `BR00117024` |
+| train | A549 | ORF | 48h | `BR00117020` |
+| train | U2OS | ORF | 48h | `BR00117022` |
+| train | A549 | CRISPR | 96h | `BR00118041`, `BR00118042` |
+| train | U2OS | CRISPR | 96h | `BR00118045`, `BR00118046` |
+| val | A549 | compound | 24h | `BR00116993` |
+| val | U2OS | compound | 24h | `BR00117025` |
+| val | A549 | CRISPR | 96h | `BR00118043` |
+| val | U2OS | CRISPR | 96h | `BR00118047` |
+| test | A549 | compound | 24h | `BR00116994` |
+| test | U2OS | compound | 24h | `BR00117026` |
+| test | A549 | ORF | 48h | `BR00117021` |
+| test | U2OS | ORF | 48h | `BR00117023` |
+| test | A549 | CRISPR | 96h | `BR00118044` |
+| test | U2OS | CRISPR | 96h | `BR00118048` |
 
-- `BR00117010`
-- Use only for smoke tests, preprocessing validation, and visual examples.
-- Not acceptable as final biological benchmark unless clearly labeled as pilot.
+Well counts:
 
-Stretch subset:
+| Split | Wells |
+| --- | ---: |
+| train | 3816 |
+| val | 1528 |
+| test | 2288 |
+| total | 7632 |
 
-- Add 4 CRISPR U2OS 144h plates: `BR00116996`, `BR00116997`, `BR00116998`, `BR00116999`.
-- This enables stronger compound-genetic target matching, but it likely exceeds the first 2.5-day plan unless downloads are fast.
+Training semantics:
+
+- Frozen encoders run on all 20 plates without labels.
+- Projection heads train only on train plates.
+- Validation plates select checkpoints and hyperparameters.
+- Test plates are reserved for split-aware final reporting.
+- Current 20-plate summary tables aggregate all queries by condition. They are useful for method comparison, but the thesis should include held-out test-query tables.
 
 ## Data Units
 
 Raw unit:
 
-- TIFF image, one channel, one field of view.
+- one TIFF image for one channel and one site.
 
 Site unit:
 
-- Five fluorescent channels for one field of view.
-- Shape after loading: `(5, H, W)`.
+- five fluorescent channels for one field of view.
 
 Well unit:
 
-- Aggregate all valid site features for one well.
-- Default aggregation: mean.
-- Ablation aggregation: median.
+- mean aggregation of site-level features for one well.
 
 Perturbation unit:
 
-- Aggregate wells with the same compound across plates only for analysis; primary metrics should stay at well level.
+- used to define positives and labels, but evaluation is computed over well-level embeddings.
 
-## Train/Validation/Test Split
+## Preprocessing And Features
 
-Default split for the four compound plates:
+Raw image policy:
 
-| Split | Plates | Purpose |
-| --- | --- | --- |
-| Train | `BR00117010`, `BR00117011` | self-supervised or weakly supervised training |
-| Validation | `BR00117012` | model selection and quick ablations |
-| Test | `BR00117013` | final held-out reporting |
+- Keep raw TIFFs on RunPod under `/workspace/data/cpjump1/images`.
+- Do not pull raw images back to the Mac.
+- Pull back only metrics, reports, logs, and selected figures.
+- Clean intermediate shards or caches only when raw image directories are protected.
 
-For unsupervised baseline encoders:
+Feature extraction:
 
-- Extract features for all plates.
-- Report metrics with held-out test queries where possible.
-- Keep train/validation/test split metadata in output files for consistent plotting.
+- Load fluorescent channels only.
+- Percentile-normalize each channel.
+- Resize to 224 x 224.
+- Encode two pseudo-RGB groups:
+  - AGP, Mito, DNA
+  - RNA, ER, DNA
+- Concatenate the two encoder embeddings.
+- Average site embeddings into one well-level feature.
+
+Completed feature files:
+
+| Encoder | Feature file |
+| --- | --- |
+| DINOv2-S/14 | `st/outputs/features/dinov2_vits14_multimodal_short_20plate.csv` |
+| DINOv2-B/14 | `st/outputs/features/dinov2_vitb14_multimodal_short_20plate.csv` |
 
 ## Metrics
 
-### Metric 1: Cross-Plate Replicate Retrieval mAP
+### 1. Replicate Retrieval
 
 Question:
 
-Can a query well retrieve wells containing the same compound on other plates?
+Can a query well retrieve wells with the same perturbation identity across other plates?
 
 Positive pairs:
 
-- Same `Metadata_broad_sample`.
-- Different `Metadata_Plate`.
+- same `Metadata_broad_sample`;
+- different `Metadata_Plate`;
+- same condition unless explicitly evaluating cross-condition behavior.
 
-Negative pairs:
+Metric:
 
-- Different `Metadata_broad_sample`.
-- Preferably from the same split or same condition.
+- mean average precision.
 
-Report:
+Role:
 
-- Mean average precision.
-- Fraction of perturbations above corrected q-value threshold if null testing is implemented.
-- Per-compound mAP distribution.
+- standard perturbation identity metric;
+- most interpretable for compound and CRISPR;
+- less stable for ORF because there are fewer ORF plates.
 
-This is the primary metric.
-
-### Metric 2: Negative-Control Challenge
+### 2. Negative-Control Challenge
 
 Question:
 
-Can treatment features retrieve treatment replicates above DMSO or other negative controls?
+Can a treatment query rank true perturbation replicates above negative controls?
 
-Positive pairs:
+Metric:
 
-- Same treatment compound across different plates.
+- mean average precision with negative controls included as distractors.
 
-Challenge set:
+Role:
 
-- Negative controls and unrelated treatments.
+- sanity check for treatment/control separation;
+- not sufficient as the main result because this metric can saturate and does not prove target-level biology.
 
-Report:
-
-- Treatment-vs-negcon retrieval AP.
-- Mean treatment-control separation score.
-
-This protects against a representation that only learns generic plate quality or staining intensity.
-
-Role in the benchmark:
-
-- Treat this as a sanity-check metric, not the main optimization target.
-- If a method performs poorly here, it likely fails to capture treatment signal.
-- If a method performs very well here, it does not automatically mean it captures mechanism-level biology.
-- Improvements should mainly be judged by replicate retrieval under artifact diagnostics and target matching.
-
-### Metric 3: Compound Target Retrieval
+### 3. Within-Modality Matching
 
 Question:
 
-Do compounds with overlapping target annotations appear closer in feature space?
+Do features recover biological relationships inside one perturbation modality?
 
-Positive pairs:
+Definitions:
 
-- Different compounds with at least one shared target in `target_list`.
+- compound: target-aware matching among annotated compounds;
+- CRISPR: gene/sister-guide matching;
+- ORF: no robust within-modality positives in the current subset, so this may be reported as missing or zero-query.
 
-Negative pairs:
+Role:
 
-- Compounds with disjoint target lists.
+- more biological than exact replicate retrieval;
+- useful when negative-control or replicate metrics are too easy.
 
-Report:
-
-- Target-level mAP.
-- Coverage after filtering ambiguous or missing target annotations.
-
-This metric may be noisier because compounds can be polypharmacological. It should be treated as secondary.
-
-Role in the benchmark:
-
-- This is the least likely metric to saturate.
-- It is the most mechanism-oriented metric in the compound-only subset.
-- It should be one of the main comparison metrics when replicate retrieval or negcon challenge are too easy.
-
-### Metric 4: Artifact Sensitivity
+### 4. Cross-Modality Matching
 
 Question:
 
-Is similarity driven more by biological perturbation or by acquisition artifacts?
+Can compound morphology align with genetic perturbation morphology for shared target/gene biology?
 
-Measure similarity for:
+Definitions:
 
-- Same compound, different plate.
-- Different compound, same plate.
-- Different compound, same well position across plates.
-- Negative controls at same well position across plates.
+- compound -> CRISPR within the same cell line;
+- compound -> ORF within the same cell line;
+- compound labels use target genes;
+- ORF/CRISPR labels use perturbation genes.
 
-Report:
+Metric:
 
-- Mean similarity table.
-- Artifact score, e.g. same-well-position similarity minus random-position similarity.
-- Plot by plate and well position.
+- mean average precision.
 
-This metric is important because small HCS subsets are vulnerable to plate and position confounding.
+Role:
 
-Important caveat for the 4-plate compound subset:
+- hardest and most thesis-worthy metric;
+- expected to be low for frozen generic encoders;
+- useful for separating exact perturbation clustering from biological mechanism alignment.
 
-- The repeated compound plates use the same plate map.
-- Therefore, same compound across plates is usually also same well position across plates.
-- Replicate retrieval remains a standard and useful metric, but it can be inflated by well-position artifacts.
-- We must report a confounding diagnostic: the fraction of same-well cross-plate pairs that are also same-compound pairs, plus negative-control same-well similarity.
-- Target retrieval and treatment-vs-negcon challenge are needed as complementary metrics because they are less reducible to same-well replicate lookup.
+## Baselines And Adaptation
 
-Metric saturation policy:
+Completed frozen baselines:
 
-- Do not rank methods by negative-control challenge alone.
-- Report replicate retrieval as a standard CPJUMP1-style metric, but always place it next to artifact diagnostics.
-- Use target matching and per-compound AP distributions as the main non-saturated biological readouts.
-- If replicate retrieval is near ceiling for several models, compare robustness: bootstrap confidence intervals, low-performing compounds, and artifact-corrected diagnostics.
+- DINOv2-S/14;
+- DINOv2-B/14;
+- `raw_l2`;
+- `plate_zscore_l2`;
+- `negcon_zscore_l2`.
 
-## Baselines
+Completed trained heads:
 
-Minimum viable baseline set:
+- DINOv2-B + plate z-score + sample Proxy-CE;
+- DINOv2-B + plate z-score + bio-target Proxy-CE.
 
-1. CellProfiler features.
-2. DINOv2 ViT-B/14.
-3. CLIP ViT-L/14.
-4. OpenPhenom, if installation succeeds quickly.
+Interpretation:
 
-Fallback baseline if OpenPhenom setup is slow:
+- Frozen DINOv2 is the label-free baseline.
+- Sample Proxy-CE uses exact perturbation/sample labels and should mainly improve replicate retrieval.
+- Bio-target Proxy-CE uses target/gene labels and should be framed as an annotation-supervised upper bound for cross-modality matching.
 
-- ImageNet ResNet50 or ViT from torchvision/timm.
+## Current Result Pattern
 
-Notes:
+Key completed results:
 
-- CellProfiler is the biological morphology baseline.
-- DINOv2 and CLIP are generic vision baselines.
-- OpenPhenom is the domain-pretrained biological-image baseline.
-- All baselines must output the same unified feature format.
+| Condition | Metric | Frozen DINOv2-B + plate z-score | Sample Proxy-CE | Bio-target Proxy-CE |
+| --- | --- | ---: | ---: | ---: |
+| A549 compound | replicate AP | 0.3111 | 0.4650 | 0.3987 |
+| U2OS compound | replicate AP | 0.2151 | 0.4195 | 0.3340 |
+| A549 CRISPR | replicate AP | 0.0447 | 0.2126 | 0.1691 |
+| U2OS CRISPR | replicate AP | 0.0645 | 0.2468 | 0.1886 |
+| A549 ORF | replicate AP | 0.0728 | 0.0729 | 0.0567 |
+| U2OS ORF | replicate AP | 0.1491 | 0.1634 | 0.1140 |
+| A549 compound -> CRISPR | cross-modality AP | 0.0347 | 0.0311 | 0.8256 |
+| A549 compound -> ORF | cross-modality AP | 0.0357 | 0.0324 | 0.8335 |
+| U2OS compound -> CRISPR | cross-modality AP | 0.0319 | 0.0290 | 0.8067 |
+| U2OS compound -> ORF | cross-modality AP | 0.0428 | 0.0279 | 0.8312 |
 
-## Training Variants
+Interpretation:
 
-We should avoid training many large models. Use one backbone and run focused variants.
+- Compound replicate retrieval is measurable but not saturated.
+- CRISPR and ORF are harder, making the benchmark more informative than the original compound-only pilot.
+- Sample Proxy-CE improves identity retrieval but does not solve cross-modality alignment.
+- Bio-target Proxy-CE strongly improves cross-modality because it trains directly on target/gene annotations. This result is valuable but must be presented as supervised upper-bound evidence.
 
-Recommended first trained model:
+## Remaining Benchmark Cleanup
 
-- Backbone: small ResNet, ViT-S, or frozen DINOv2 with trainable projection head.
-- Input: two pseudo-RGB groups or five-channel first layer if easy.
-- Training unit: site-level image.
-- Evaluation unit: well-level feature aggregation.
+Priority 1:
 
-Variants:
+- produce split-aware held-out test-query tables for frozen DINOv2-B, sample Proxy-CE, and bio-target Proxy-CE.
 
-| Variant | Purpose | Expected Cost |
-| --- | --- | --- |
-| Frozen encoder + projection head | cheap adaptation | low |
-| SimCLR site contrastive | general SSL | medium |
-| Well-aware contrastive | same-well sites as positives | medium |
-| Compound-aware supervised contrastive | same compound across train plates as positives | medium |
-| Plate-normalized features | artifact reduction | low |
+Priority 2:
 
-Only run all variants if smoke tests and baselines finish early.
+- make figures for dataset composition, frozen baselines, and projection-head comparison.
 
-## Preprocessing Choices
+Priority 3:
 
-Default:
+- report artifact diagnostics where possible, especially plate and well-position sensitivity.
 
-- Use fluorescent channels 1-5 only.
-- Per-channel percentile normalization, e.g. 0.1 to 99.9.
-- Resize to 224 for DINOv2/CLIP/ImageNet encoders.
-- Resize to 256 for OpenPhenom if required.
-- Encode two pseudo-RGB groups for 3-channel encoders:
-  - AGP, Mito, DNA.
-  - RNA, ER, DNA.
-- Concatenate group features.
+Success criteria:
 
-Augmentation candidates:
-
-- Random crop and resize.
-- Horizontal/vertical flip.
-- 90-degree rotations.
-- Mild per-channel intensity jitter.
-- Mild Gaussian blur.
-
-Avoid at first:
-
-- Heavy color jitter copied from natural-image pipelines.
-- CutMix/MixUp unless there is a clear biological rationale.
-- Strong augmentations that can erase subcellular morphology.
-
-## Output Artifacts
-
-All generated files should live under `st/`.
-
-Proposed structure:
-
-```text
-st/
-  README.md
-  paper_outline.md
-  benchmark_design.md
-  configs/
-  scripts/
-  src/
-  data/
-    metadata/
-    splits/
-  outputs/
-    features/
-    metrics/
-    figures/
-    logs/
-  reports/
-```
-
-Do not write new project code into the root repo or `cpjump1_benchmark/`. Reuse code by importing or copying minimal adapted modules into `st/` only after we decide the final benchmark API.
-
-## Local And Remote Execution
-
-The Mac is the development and coordination machine. The rented GPU server is the data and compute machine.
-
-Use git to synchronize code:
-
-- Mac writes code under `st/`.
-- Mac commits and pushes branch `st`.
-- GPU server pulls branch `st`.
-
-Do not download full CPJUMP1 images to the Mac. Raw images, model checkpoints, large feature files, and caches should live on the GPU server only. Pull back only metrics, figures, small logs, and reports.
-
-See `remote_execution_plan.md` for the detailed SSH, tmux, git, and result-transfer workflow.
-
-## Figure Plan
-
-Use real experimental outputs for results figures:
-
-1. Dataset composition plot.
-2. Baseline metric comparison.
-3. UMAP/PCA representation plot.
-4. Per-compound replicate mAP distribution.
-5. Artifact sensitivity plot.
-6. Ablation table or bar plot.
-
-Use GPT image generation only for a conceptual overview figure if needed:
-
-- Example: HCS image stack to encoder to well-level representation to retrieval metrics.
-- Do not use generated images as evidence.
-
-## Tmux Plan
-
-Use separate sessions:
-
-```text
-tmux new -s st_download
-tmux new -s st_extract
-tmux new -s st_train
-tmux new -s st_eval
-```
-
-Logging convention:
-
-```text
-st/outputs/logs/YYYYMMDD_HHMM_command_name.log
-```
-
-Every long command should:
-
-- Print environment info.
-- Print config path.
-- Print output path.
-- Save progress and final metrics.
-
-## 2.5-Day Schedule
-
-### Day 0, First Half Day: Freeze Benchmark And Smoke Test
-
-Goals:
-
-- Create benchmark config.
-- Implement metadata filtering and split creation.
-- Download a tiny subset: 1-2 wells from one plate.
-- Run image loading and one encoder smoke test.
-- Verify feature parquet or CSV output.
-- Verify metric code on toy features.
-
-Deliverables:
-
-- `st/README.md` draft.
-- `st/configs/subset_u2os_compound_4plate.yaml`.
-- Smoke-test feature file.
-- Smoke-test metric file.
-
-Exit criterion:
-
-- One command can produce features for a small subset.
-- One command can compute at least replicate retrieval on that subset.
-
-### Day 1: Baselines
-
-Goals:
-
-- Download primary subset or fallback subset.
-- Run CellProfiler conversion if real profiles are available.
-- Extract DINOv2 features.
-- Extract CLIP or ImageNet features.
-- Try OpenPhenom only if dependency setup is smooth.
-- Compute all four metrics for available baselines.
-
-Deliverables:
-
-- Feature files under `st/outputs/features/`.
-- Metric CSVs under `st/outputs/metrics/`.
-- Initial comparison table.
-
-Exit criterion:
-
-- At least three baselines have valid metric rows.
-
-### Day 2: Training And Ablations
-
-Goals:
-
-- Train one lightweight SSL or contrastive variant.
-- Run 2-4 ablations:
-  - channel grouping.
-  - aggregation mean vs median.
-  - plate normalization.
-  - well-aware positives or supervised contrastive.
-- Evaluate all variants on the same frozen metrics.
-
-Deliverables:
-
-- Trained checkpoints.
-- Ablation metrics.
-- Runtime and cost table.
-
-Exit criterion:
-
-- At least one trained variant beats a generic baseline on the primary metric or gives a useful negative result.
-
-### Day 2.5: Figures And Analysis
-
-Goals:
-
-- Generate all paper figures.
-- Write experiment report.
-- Identify best method and failure cases.
-- Commit repository.
-
-Deliverables:
-
-- `st/reports/experiment_report.md`.
-- `st/outputs/figures/`.
-- Clean README with reproduction commands.
-- Git commit.
-
-Exit criterion:
-
-- A reader can understand the benchmark, reproduce the main table, and see all figures.
-
-## Risk Register
-
-Risk: Full image download is too large.
-
-Mitigation:
-
-- Use fluorescent-only channels.
-- Start with 2 plates.
-- Use site subsampling.
-- Cache features immediately.
-
-Risk: OpenPhenom dependency setup takes too long.
-
-Mitigation:
-
-- Treat OpenPhenom as optional.
-- Replace with ImageNet ResNet/ViT if blocked for more than 2 hours.
-
-Risk: Training does not improve results.
-
-Mitigation:
-
-- Report rigorous negative result.
-- Focus analysis on why generic or classical baselines perform better.
-- Emphasize benchmark contribution and artifact analysis.
-
-Risk: Metrics are unstable on small subset.
-
-Mitigation:
-
-- Bootstrap confidence intervals.
-- Report per-compound distributions, not just mean.
-- Keep artifact score visible.
-
-Risk: Features learn plate identity.
-
-Mitigation:
-
-- Hold out one plate.
-- Include artifact sensitivity metric.
-- Apply plate-wise robust normalization as an ablation.
-
-## Immediate Next Implementation Step
-
-Implement a minimal benchmark scaffold in `st/`:
-
-1. `st/configs/subset_u2os_compound_4plate.yaml`
-2. `st/src/st_benchmark/metadata.py`
-3. `st/src/st_benchmark/metrics.py`
-4. `st/scripts/make_subset_metadata.py`
-5. `st/scripts/run_smoke_metrics.py`
-
-Before downloading large images, the smoke metric should run from existing metadata and synthetic features. This will validate the benchmark logic cheaply.
+- exact 20-plate subset is documented;
+- train/val/test plate split is explicit;
+- metric definitions are clear;
+- cross-modality is included as a main benchmark axis;
+- label-free, sample-supervised, and target-supervised settings are separated.

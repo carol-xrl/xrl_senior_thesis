@@ -1120,3 +1120,20 @@ Interpretation:
 - Sample Proxy-CE does not improve cross-modality matching, which shows that memorizing perturbation/sample identity is not sufficient for compound-to-gene alignment.
 - Bio-target Proxy-CE is an annotation-supervised upper bound. It directly trains on target/gene labels and therefore strongly improves cross-modality AP. This should be framed separately from label-free/frozen baselines.
 - The contrast between the two heads is useful for the thesis: morphology has enough signal to retrieve repeated perturbations, while cross-modality alignment needs biological target supervision or a more explicit alignment objective.
+
+## 2026-05-28: Experiment Plan And Paper Outline Sync
+
+I updated the planning documents to reflect the current 20-plate multimodal benchmark instead of the earlier compound-only pilot:
+
+- `st/experiment_plan.md`
+- `st/paper_outline.md`
+- `st/benchmark_design.md`
+
+The synchronized plan now states:
+
+- the benchmark uses 20 plates across A549/U2OS and compound/ORF/CRISPR;
+- the main metric suite includes replicate retrieval, negative-control challenge, within-modality matching, and cross-modality matching;
+- the split is plate-level, with train plates for projection-head training, validation plates for checkpoint selection, and test plates for final held-out reporting;
+- frozen encoders can be extracted on all 20 plates because no labels are used during feature extraction;
+- current 20-plate result tables are all-query condition summaries, so the next cleanup step is split-aware test-query reporting;
+- bio-target Proxy-CE should be framed as an annotation-supervised upper bound, not as a label-free baseline.
