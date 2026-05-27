@@ -1,0 +1,416 @@
+# ST Project Log
+
+This log records what we did, why we made each benchmark decision, and what we learned at each step.
+
+## 2026-05-27: Project Direction
+
+### What We Decided
+
+We will rebuild a compact CPJUMP1 benchmark under `st/`, while using the cleaned original benchmark in `../cpjump1_benchmark` as a reference.
+
+The goal is not to reproduce the full CPJUMP1 paper-scale benchmark. The goal is to create a smaller, credible, biologically meaningful benchmark that can support a strong paper under practical constraints:
+
+- Local Mac for writing code, planning, and reviewing results.
+- Rented GPU server for image download, feature extraction, training, and long experiments.
+- Budget around 100 USD.
+- Target timeline around 2.5 days for experiments, figures, and analysis.
+- Raw images should stay on the GPU server.
+
+### Why We Need A Compact Benchmark
+
+The original CPJUMP1 benchmark is scientifically valuable but expensive because full image plates are large. One plate can be tens of GB, and full multi-modal benchmarking quickly becomes too slow and expensive for our current budget.
+
+Therefore, the benchmark must satisfy two constraints:
+
+1. It must preserve real biological retrieval structure.
+2. It must be small enough to run repeatedly for method development.
+
+This is why we first choose a 1-4 plate subset rather than the full CPJUMP1 dataset.
+
+## 2026-05-27: Chosen First Benchmark Subset
+
+### Selected Subset
+
+Primary subset:
+
+| Field | Value |
+| --- | --- |
+| Batch | `2020_11_04_CPJUMP1` |
+| Modality | compound |
+| Cell type | U2OS |
+| Time | 48h |
+| Density | 100 |
+| Antibiotics | absent |
+| Cell line | Parental |
+| Plates | `BR00117010`, `BR00117011`, `BR00117012`, `BR00117013` |
+
+Metadata scale after reconstruction:
+
+| Item | Count |
+| --- | ---: |
+| Wells | 1536 |
+| Plates | 4 |
+| Treatment wells | 1280 |
+| Negative-control wells | 256 |
+| Unique broad samples | 307 |
+| Annotated treatment wells | 1280 |
+
+### Why This Subset Is Reasonable
+
+This is the most reasonable first benchmark subset under our constraints, not necessarily the only scientifically interesting subset.
+
+Reasons:
+
+1. Same experimental condition.
+
+   The four plates share modality, cell type, timepoint, density, antibiotics, and cell line. This reduces confounding from obvious condition changes. If an encoder retrieves replicates here, the signal is more plausibly related to compound-induced morphology rather than different experimental settings.
+
+2. Replicate structure across plates.
+
+   These plates repeat the same compound plate map across multiple plates. That gives cross-plate replicates for many compounds, which is the core requirement for a perturbation retrieval benchmark.
+
+3. Enough negative controls.
+
+   The subset has 256 negative-control wells. This lets us test whether treatment profiles separate from DMSO/negative controls, a standard and biologically meaningful HCS sanity check.
+
+4. Rich compound annotations.
+
+   All 1280 treatment wells in this subset have target annotations. This enables compound/target matching, which asks whether compounds with related biological targets are closer in representation space.
+
+5. Affordable data size.
+
+   Four plates are still large, but feasible on a rented GPU server if we use fluorescent channels only and cache features. Genetic + compound + multi-timepoint experiments would be more complete but much more expensive.
+
+6. Clear paper story.
+
+   A compact compound-only benchmark can still test perturbation identity, control separation, and target-level biological structure. That is enough for a strong first benchmark if we are honest about limitations.
+
+### Why Not Start With Other Plates Or Modalities
+
+CRISPR and ORF plates are biologically important, especially for cross-modality matching. However, starting there is less practical for the first 2.5-day benchmark.
+
+Reasons:
+
+- Cross-modality matching needs both compound and genetic perturbation plates, increasing image download and feature extraction cost.
+- Genetic perturbation phenotypes can be weaker or more heterogeneous than compound perturbations.
+- Some ORF conditions have fewer replicate plates under the exact same condition.
+- Full compound-CRISPR-ORF matching is a better stretch goal after the compact compound benchmark is stable.
+
+Therefore, we start with compound U2OS 48h plates. Once the pipeline is stable, the best stretch extension is to add U2OS CRISPR 144h plates:
+
+- `BR00116996`
+- `BR00116997`
+- `BR00116998`
+- `BR00116999`
+
+That would allow stronger compound-genetic target matching, but should not block the first benchmark.
+
+## 2026-05-27: Chosen Metrics
+
+We choose metrics that are common in Cell Painting / CPJUMP1-style evaluation and can be computed reliably on a compact subset.
+
+### Metric 1: Replicate Retrieval
+
+Question:
+
+Can a query well retrieve wells with the same compound on other plates?
+
+Positive pairs:
+
+- Same `Metadata_broad_sample`.
+- Different `Metadata_Plate`.
+
+Biological meaning:
+
+If the same compound induces a consistent cellular morphology, good representations should place replicate wells close together. This is the most direct perturbation-level representation metric.
+
+Why it is reasonable:
+
+- It matches the core idea of CPJUMP1 replicability.
+- It does not require training labels beyond compound identity.
+- It works with only compound plates.
+- It is interpretable per compound and as mean AP.
+
+Important caveat:
+
+Because these four plates reuse the same plate map, same-compound cross-plate pairs are also same-well-position pairs. So this metric can be inflated by well-position artifacts. We must report artifact diagnostics alongside it.
+
+### Metric 2: Negative-Control Challenge
+
+Question:
+
+Can treatment wells retrieve their true treatment replicates above DMSO/negative-control wells?
+
+Biological meaning:
+
+A useful morphology representation should distinguish perturbation-induced changes from negative controls. This is a basic HCS validity check: if treatment profiles cannot separate from DMSO, the feature space is unlikely to be biologically useful.
+
+Why it is reasonable:
+
+- The subset has many negative-control wells.
+- It is robust and easy to interpret.
+- It complements replicate retrieval because it directly tests treatment-vs-control separation.
+
+### Metric 3: Compound Target Matching
+
+Question:
+
+Are compounds with overlapping annotated target genes closer than compounds with unrelated targets?
+
+Biological meaning:
+
+Compounds affecting the same target or pathway may induce related morphology. A good representation should recover at least some target-level organization.
+
+Why it is reasonable:
+
+- The subset has compound target annotations for all treatment wells.
+- It moves beyond exact compound identity.
+- It is closer to drug-discovery use cases, where we care about mechanism and target relationships.
+
+Important caveat:
+
+This metric is noisier than replicate retrieval because compounds can be polypharmacological, target annotations are imperfect, and target effects may not always produce visible morphology.
+
+### Metric 4: Artifact Sensitivity
+
+Question:
+
+Is feature similarity driven by biology, or by plate/well-position artifacts?
+
+Biological and experimental meaning:
+
+Cell Painting data can contain strong acquisition artifacts. A representation that mainly encodes plate position or staining intensity may score well on naive replicate retrieval but fail biologically.
+
+Why it is necessary:
+
+Our selected compound plates reuse the same plate map. Therefore, artifact sensitivity is not optional. It is the diagnostic that keeps the benchmark honest.
+
+Current diagnostic categories:
+
+- Same compound, different plate.
+- Different compound, same plate.
+- Different compound, different plate.
+- Same well, different plate.
+- Negative controls at same well, different plate.
+- Same-well same-compound fraction.
+
+## 2026-05-27: What We Implemented
+
+Files added under `st/`:
+
+- `paper_outline.md`: paper structure and contribution framing.
+- `benchmark_design.md`: benchmark definition, 2.5-day plan, metrics, risks.
+- `remote_execution_plan.md`: Mac/GPU server workflow.
+- `README.md`: local smoke-test commands and project rules.
+- `configs/subset_u2os_compound_4plate.yaml`: frozen subset config.
+- `src/st_benchmark/metadata.py`: metadata construction.
+- `src/st_benchmark/metrics.py`: replicate, negcon, target, and artifact metrics.
+- `src/st_benchmark/synthetic.py`: synthetic feature generation for local smoke tests.
+- `scripts/make_subset_metadata.py`: builds subset metadata.
+- `scripts/run_smoke_metrics.py`: runs metrics on synthetic features.
+- `reports/smoke_benchmark_report.md`: first smoke report.
+
+The implementation intentionally avoids heavy dependencies. It uses pandas and numpy so the Mac can validate the benchmark logic before we rent a GPU server.
+
+## 2026-05-27: Preliminary Smoke Results
+
+The smoke test uses real CPJUMP1 metadata but synthetic features. Therefore, the numeric values are not biological results. They only test whether the benchmark pipeline is wired correctly.
+
+Synthetic feature design:
+
+- Strong compound signal.
+- Weaker target signal.
+- Plate signal.
+- Well-position signal.
+- Random noise.
+
+Smoke metric results:
+
+| Metric | Mean AP | Median AP | Queries | Groups |
+| --- | ---: | ---: | ---: | ---: |
+| Replicate retrieval | 0.980 | 1.000 | 1280 | 306 |
+| Negative-control challenge | 0.996 | 1.000 | 1280 | 306 |
+| Target retrieval | 0.107 | 0.048 | 302 | 302 |
+
+These results match expectation:
+
+- Replicate retrieval is high because synthetic features include strong compound identity.
+- Negative-control challenge is high because treatment features are intentionally structured.
+- Target retrieval is much lower because target signal is weaker and target-list matching is noisier.
+
+Artifact diagnostic:
+
+| Diagnostic | Value |
+| --- | ---: |
+| Same-well same-compound fraction | 1.000 |
+| Negative-control same-well artifact score | 0.507 |
+| Same-compound biology score | 0.564 |
+
+Key finding:
+
+The selected plates have complete same-well / same-compound confounding across plates. This means replicate retrieval alone is not enough. The final benchmark must always report:
+
+1. Replicate retrieval.
+2. Negative-control challenge.
+3. Target matching.
+4. Artifact diagnostics.
+
+This finding is useful because it shapes how we will write the paper: the benchmark is compact and practical, but we explicitly quantify and disclose its confounding risk.
+
+## Current Interpretation
+
+The benchmark design is reasonable as a first compact CPJUMP1 benchmark because it is:
+
+- Small enough to run.
+- Biologically grounded in compound-induced morphology.
+- Rich enough for replicate and target-level evaluation.
+- Honest about artifact confounding.
+
+The first smoke result supports the implementation, not the biological claim. The biological claim can only be evaluated after running real encoder features on the GPU server.
+
+## 2026-05-27: Concern About Saturated Metrics
+
+We noticed a valid risk: replicate retrieval and negative-control challenge may become too easy. If they are near ceiling, training improvements will be hard to measure.
+
+Current assessment:
+
+1. The smoke scores are high because the synthetic feature generator intentionally includes a strong compound signal. They are not real model scores.
+2. Existing full-benchmark CellProfiler outputs in the original repo suggest the real U2OS 48h compound task is not fully saturated:
+   - `compound_U2OS_long` replicability fraction retrieved: 0.660.
+   - `compound_U2OS_long` replicate mean AP: about 0.578.
+   - `compound_U2OS_long` compound matching fraction retrieved: 0.251.
+   - `compound_U2OS_long` compound matching mean AP: about 0.195.
+3. Negative-control challenge may still be easier than target matching. We should treat it as a sanity check rather than the main metric.
+
+Updated metric policy:
+
+- Primary biological comparison should not rely only on replicate retrieval or negcon challenge.
+- Target matching should be emphasized because it is mechanism-oriented and less likely to saturate.
+- Replicate retrieval should be reported with artifact diagnostics because same-well and same-compound are confounded in the selected plates.
+- Negative-control challenge should answer "does this representation detect treatment signal at all?", not "is this the best biological representation?"
+- If several methods reach high replicate or negcon scores, compare per-compound AP distributions, low-performing compounds, bootstrap confidence intervals, and artifact scores.
+
+This makes the benchmark safer: even if easy metrics saturate, the paper can still show meaningful differences through target matching and artifact-aware analysis.
+
+## Next Step
+
+Connect the scaffold to real image features:
+
+1. Generate a download manifest for the selected plates and fluorescent channels.
+2. Add real-feature evaluation script that consumes encoder output in a unified schema.
+3. Run a tiny remote smoke test after renting the GPU server.
+4. Launch baseline feature extraction in tmux.
+
+## 2026-05-27: Real-Feature Pipeline Preparation
+
+We added the server-facing pieces needed before renting the GPU:
+
+- `src/st_benchmark/downloads.py`
+- `src/st_benchmark/evaluate.py`
+- `src/st_benchmark/plots.py`
+- `scripts/prepare_download_manifest.py`
+- `scripts/evaluate_features.py`
+- `scripts/plot_metric_summary.py`
+
+What these do:
+
+1. Prepare a plate-level S3 download manifest.
+2. Generate AWS CLI sync commands for fluorescent channels only.
+3. Support tiny pilot downloads by restricting to wells such as `A01 A02`.
+4. Evaluate any real encoder output table with columns `Metadata_Plate`, `Metadata_Well`, and `feature_*`.
+5. Produce metric CSVs and basic summary/artifact plots.
+
+Local validation:
+
+- Python compilation passed.
+- Offline download manifest generation passed.
+- Synthetic feature evaluation through the real-feature entry point passed.
+- Plot generation passed.
+
+Important operational note:
+
+The Mac-generated download manifest is unresolved because it does not query S3 locally. On the GPU server, rerun `prepare_download_manifest.py --resolve-s3` so the script can discover timestamped S3 plate directories through AWS CLI.
+
+The server pilot command should start with `--wells A01 A02 --dryrun`, then remove `--dryrun`, then remove `--wells` for the full fluorescent-channel subset.
+
+## 2026-05-27: Experiment Plan
+
+We created `experiment_plan.md`.
+
+The baseline plan is designed to be representative and feasible:
+
+- CellProfiler as the classical morphology baseline.
+- DINOv2 as the stable generic SSL baseline.
+- DINOv3 as the newer frontier generic SSL baseline.
+- OpenPhenom as the microscopy / Cell Painting domain-pretrained baseline.
+- BioMedCLIP or CLIP as optional vision-language contrast.
+- ResNet50 as a robust fallback if newer models fail.
+
+The loss plan is:
+
+- SimCLR / NT-Xent self-supervised loss.
+- Well-aware contrastive loss.
+- Compound supervised contrastive loss.
+- Target-aware supervised contrastive loss as stretch.
+
+The trick plan is:
+
+- Channel grouping ablation.
+- Plate-wise normalization.
+- Mean vs median site aggregation.
+- Artifact-aware sampling.
+- Lightweight adapters or last-block fine-tuning as stretch.
+
+The key standard is that we should prioritize scientifically interpretable results over a large number of expensive runs.
+
+## 2026-05-27: RunPod Resource Plan
+
+We created `resource_plan.md`.
+
+Recommendation:
+
+- Start with one strong 48GB GPU pod: L40S 48GB or RTX 6000 Ada 48GB.
+- Use 16+ vCPU, 64GB+ RAM, and 700GB-1TB NVMe/local disk.
+- Do not start with multi-GPU unless the price is excellent and the pod has enough CPU/disk IO.
+
+Reasoning:
+
+- Our first bottleneck is pipeline stability plus image download/decode, not distributed training.
+- A single 48GB GPU is enough for frozen DINOv2/DINOv3/OpenPhenom extraction and projection-head training.
+- Multi-GPU can help run two frozen encoders in parallel, but can also create disk IO contention and more failure modes.
+- H100/H200 are unnecessary for this compact benchmark.
+
+## 2026-05-27: RunPod Pod Opened
+
+The RunPod pod is live.
+
+Direct TCP SSH endpoint:
+
+```bash
+ssh root@209.170.80.132 -p 20639 -i ~/.ssh/id_ed25519
+```
+
+Fallback SSH endpoint:
+
+```bash
+ssh 4ummi44gx59ks6-6441117e@ssh.runpod.io -i ~/.ssh/id_ed25519
+```
+
+First read-only SSH check succeeded.
+
+Observed hardware:
+
+- Host: `a80a5edce179`
+- GPU: NVIDIA L40S
+- Visible VRAM: 46068 MiB
+- Driver: 570.195.03
+- RAM: 503 GiB
+- Workspace mount: `/workspace`
+
+This is sufficient for the planned single-GPU experiment workflow.
+
+Created Codex skill:
+
+- `runpod-st-experiments`
+- Location: `/Users/carolxrl/.codex/skills/runpod-st-experiments`
+- Validation: passed
