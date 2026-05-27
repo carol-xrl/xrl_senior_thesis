@@ -65,9 +65,9 @@ def transformed_features(features: pd.DataFrame, metadata: pd.DataFrame, variant
     else:
         raise ValueError(f"Unknown variant: {variant}")
 
-    output = frame[keys].copy()
-    output[feat_cols] = transformed.astype(np.float32)
-    return output
+    output = frame[keys].reset_index(drop=True).copy()
+    feature_frame = pd.DataFrame(transformed.astype(np.float32), columns=feat_cols, index=output.index)
+    return pd.concat([output, feature_frame], axis=1)
 
 
 def main() -> None:

@@ -531,3 +531,40 @@ Interpretation:
 - Plate z-score is the best simple correction for replicate retrieval.
 - Negative-control centering/z-scoring is strongest for the negative-control challenge.
 - This supports including feature normalization as an explicit trick ablation in the thesis, because it improves the real benchmark without additional model training.
+
+## 2026-05-27: DINOv2-B/14 Full Baseline
+
+I launched the next stronger frozen-feature baseline on RunPod:
+
+- tmux session: `st_dinov2b_fast`
+- feature output on RunPod: `st/outputs/features/dinov2_vitb14_full.csv`
+- metrics pulled locally: `st/outputs/metrics/dinov2_vitb14_full/`
+- transform comparison pulled locally: `st/outputs/metrics/dinov2_vitb14_transforms/dinov2_vitb14_transform_comparison.csv`
+- local figures: `st/outputs/figures/dinov2_vitb14_full/` and `st/outputs/figures/dinov2_vitb14_transforms/`
+
+The fast extractor processed 13,824 complete imaging sites from the same 4-plate U2OS compound 48h subset and wrote 1,536 well-level feature rows. The RunPod tmux session exited cleanly after feature extraction, metric evaluation, and normalization ablation.
+
+Key raw DINOv2-B/14 results:
+
+| Metric | Mean AP | Median AP |
+| --- | ---: | ---: |
+| Replicate retrieval | 0.2750 | 0.0451 |
+| Negative-control challenge | 0.3811 | 0.1076 |
+| Target retrieval | 0.0753 | 0.0310 |
+
+Normalization ablation:
+
+| Variant | Replicate mean AP | Negcon mean AP | Target mean AP |
+| --- | ---: | ---: | ---: |
+| raw_l2 | 0.2750 | 0.3811 | 0.0753 |
+| global_zscore_l2 | 0.2875 | 0.4303 | 0.0738 |
+| plate_center_l2 | 0.2959 | 0.4360 | 0.0716 |
+| plate_zscore_l2 | 0.3044 | 0.4484 | 0.0719 |
+| negcon_center_l2 | 0.2802 | 0.4612 | 0.0707 |
+| negcon_zscore_l2 | 0.2728 | 0.4645 | 0.0708 |
+
+Interpretation:
+
+- DINOv2-B/14 gives a modest raw improvement over DINOv2-S/14, especially target retrieval (0.0753 vs about 0.068).
+- The same normalization pattern holds: plate z-score is strongest for replicate retrieval, while negcon z-score is strongest for the negative-control challenge.
+- This is a useful paper result because it separates backbone capacity from domain/batch correction: scaling the frozen vision backbone helps a little, but biological retrieval still depends strongly on plate-aware normalization.
