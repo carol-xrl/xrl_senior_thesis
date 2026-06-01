@@ -1,5 +1,0 @@
-Metadata_Plate,Metadata_split,Batch,s3_plate_dir,s3_path,local_path,resolved
-BR00117010,train,2020_11_04_CPJUMP1,,,/data/cpjump1/images/2020_11_04_CPJUMP1/BR00117010/Images,False
-BR00117011,train,2020_11_04_CPJUMP1,,,/data/cpjump1/images/2020_11_04_CPJUMP1/BR00117011/Images,False
-BR00117012,val,2020_11_04_CPJUMP1,,,/data/cpjump1/images/2020_11_04_CPJUMP1/BR00117012/Images,False
-BR00117013,test,2020_11_04_CPJUMP1,,,/data/cpjump1/images/2020_11_04_CPJUMP1/BR00117013/Images,False
